@@ -36,3 +36,5 @@ temp_*.wav
 
 # Logs
 *.log 
+
+.DS_Store
