@@ -4,17 +4,19 @@ import asyncio
 import uuid
 import json
 from datetime import datetime
-from fastapi import FastAPI, UploadFile, HTTPException, BackgroundTasks, File, Query
+from fastapi import FastAPI, UploadFile, HTTPException, BackgroundTasks, File, Query, Form
 from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 import uvicorn
 
 # Import models
 from models.process import ProcessStatus, ProcessInfo
+from models.pronunciation import PronunciationAssessmentResponse
 
 # Import services
 from services.elevenlabs import elevenlabs_service
 from services.mistral import mistral_service
+from services.pronunciation import pronunciation_service
 
 from utils import get_root_folder
 
@@ -124,6 +126,37 @@ async def upload_file(background_tasks: BackgroundTasks, file: UploadFile = File
     background_tasks.add_task(process_wav_file, process_id, temp_file_path)
     
     return process_info
+
+@app.post("/assess_pronunciation", response_model=PronunciationAssessmentResponse, summary="Assess pronunciation of spoken text")
+async def assess_pronunciation(file: UploadFile = File(...), reference_text: str = Form(...)):
+    """
+    Assess pronunciation of a spoken audio file against a reference text.
+    
+    This endpoint uses a neural network phoneme-level scoring approach (GOP-based) to:
+    1. Convert reference text to phonemes
+    2. Score each phoneme in the audio
+    3. Generate feedback on pronunciation quality
+    4. Provide synthesized audio of correct pronunciation
+    
+    Args:
+        file: WAV audio file of spoken text to assess
+        reference_text: The text that was supposed to be spoken
+        
+    Returns:
+        Detailed pronunciation assessment with scores, feedback, and audio
+    """
+    if not file.filename.endswith('.wav'):
+        raise HTTPException(status_code=400, detail="File must be a WAV file")
+    
+    # Read the file
+    audio_data = await file.read()
+    
+    # Process with pronunciation assessment service
+    try:
+        result = await pronunciation_service.assess_pronunciation(audio_data, reference_text)
+        return result
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error assessing pronunciation: {str(e)}")
 
 @app.get("/status/{process_id}", response_model=ProcessInfo, summary="Check the status of a process")
 async def check_status(process_id: str):
