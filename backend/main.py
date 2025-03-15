@@ -20,6 +20,10 @@ from utils import get_root_folder
 
 # Load environment variables from .env outside of the current directory
 load_dotenv(dotenv_path=get_root_folder() / ".env")
+# print(get_root_folder() / ".env")
+
+# import sys
+# sys.exit()
 
 # Create FastAPI app
 app = FastAPI(
