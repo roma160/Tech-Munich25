@@ -11,3 +11,4 @@ typing_extensions==4.12.2
 uvicorn==0.30.3
 aiohttp==3.9.5
 python-multipart==0.0.9
+openai==1.66.3

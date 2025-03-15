@@ -1,29 +1,20 @@
 from dotenv import load_dotenv
 import os
-import asyncio
 import uuid
-import json
 from datetime import datetime
-from fastapi import FastAPI, UploadFile, HTTPException, BackgroundTasks, File, Query
-from fastapi.responses import JSONResponse
+from fastapi import FastAPI, UploadFile, HTTPException, BackgroundTasks, File
 from fastapi.middleware.cors import CORSMiddleware
 import uvicorn
 
-# Import models
 from models.process import ProcessStatus, ProcessInfo
 
-# Import services
-from services.elevenlabs import elevenlabs_service
-from services.mistral import mistral_service
+from services.elevenlabs import ElevenLabsService
+from services.language_feedback import LanguageFeedbackService
 
 from utils import get_root_folder
 
-# Load environment variables from .env outside of the current directory
 load_dotenv(dotenv_path=get_root_folder() / ".env")
-# print(get_root_folder() / ".env")
 
-# import sys
-# sys.exit()
 
 # Create FastAPI app
 app = FastAPI(
@@ -46,6 +37,11 @@ app.add_middleware(
 # Store active processes
 active_processes = {}
 
+# Singleton instances
+mistral_service = LanguageFeedbackService() 
+elevenlabs_service = ElevenLabsService() 
+
+
 # Process WAV file
 async def process_wav_file(process_id: str, file_path: str):
     try:
@@ -65,8 +61,7 @@ async def process_wav_file(process_id: str, file_path: str):
         active_processes[process_id].updated_at = datetime.now().isoformat()
         
         # Extract text from ElevenLabs result and send to Mistral
-        text_content = elevenlabs_result.get("text", "")
-        mistral_result = await mistral_service.process_text(text_content)
+        mistral_result = await mistral_service.process_transcript(elevenlabs_result)
         
         # Update process with final result
         active_processes[process_id].status = ProcessStatus.COMPLETE
