@@ -27,7 +27,6 @@ ENV/
 
 # Temporary files
 temp_*.wav
-*.wav
 
 # IDE files
 .idea/
