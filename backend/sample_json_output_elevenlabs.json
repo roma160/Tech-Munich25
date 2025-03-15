@@ -1,0 +1,28 @@
+{
+  "text": "This is a sample transcription of spoken content. The ElevenLabs API converts speech to text with high accuracy.",
+  "transcription": [
+    {
+      "text": "This is a sample transcription",
+      "start": 0.0,
+      "end": 2.5
+    },
+    {
+      "text": "of spoken content.",
+      "start": 2.5,
+      "end": 4.0
+    },
+    {
+      "text": "The ElevenLabs API converts speech to text",
+      "start": 4.0,
+      "end": 7.5
+    },
+    {
+      "text": "with high accuracy.",
+      "start": 7.5,
+      "end": 9.0
+    }
+  ],
+  "language": "en",
+  "detected_language": "en",
+  "confidence_score": 0.98
+}
