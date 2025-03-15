@@ -98,7 +98,7 @@ class ElevenLabsService:
                     filename=os.path.basename(file_path),
                     content_type='audio/wav'
                 )
-                form_data.add_field('model_id', 'eleven_english_v2')
+                form_data.add_field('model_id', 'scribe_v1')
                 
                 # Make the POST request
                 async with session.post(
