@@ -16,8 +16,10 @@ from models.process import ProcessStatus, ProcessInfo
 from services.elevenlabs import elevenlabs_service
 from services.mistral import mistral_service
 
+from utils import get_root_folder
+
 # Load environment variables from .env outside of the current directory
-load_dotenv(dotenv_path="../.env")
+load_dotenv(dotenv_path=get_root_folder() / ".env")
 
 # Create FastAPI app
 app = FastAPI(
