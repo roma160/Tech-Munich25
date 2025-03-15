@@ -99,6 +99,8 @@ class ElevenLabsService:
                     content_type='audio/wav'
                 )
                 form_data.add_field('model_id', 'scribe_v1')
+                form_data.add_field('diarize', 'true')  # Enable speaker diarization
+                # No language_code provided to allow auto-detection
                 
                 # Make the POST request
                 async with session.post(
