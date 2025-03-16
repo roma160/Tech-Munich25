@@ -12,6 +12,18 @@ const nextConfig = {
         source: '/api/status/:path*',
         destination: 'http://localhost:8000/status/:path*',
       },
+      {
+        source: '/api/reprocess/:path*',
+        destination: 'http://localhost:8000/reprocess/:path*',
+      },
+      {
+        source: '/api/use-sample',
+        destination: 'http://localhost:8000/use-sample',
+      },
+      {
+        source: '/api/sample.wav',
+        destination: 'http://localhost:8000/sample.wav',
+      }
     ];
   },
 };

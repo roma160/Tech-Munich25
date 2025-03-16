@@ -1,10 +1,11 @@
 from dotenv import load_dotenv
 import os
 import uuid
+import json
 from datetime import datetime
 from fastapi import FastAPI, UploadFile, HTTPException, BackgroundTasks, File
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, JSONResponse
 import uvicorn
 import logging
 
@@ -61,12 +62,33 @@ async def process_wav_file(process_id: str, file_path: str):
             # Step 1: Send to ElevenLabs for speech-to-text
             elevenlabs_result = await elevenlabs_service.speech_to_text(file_path)
             elevenlabs_segments = elevenlabs_result.extract_segments()
+            
+            # Debug logs
+            logger.info(f"ElevenLabs segments type: {type(elevenlabs_segments)}")
+            logger.info(f"ElevenLabs segments count: {len(elevenlabs_segments)}")
+            logger.info(f"ElevenLabs segments sample: {elevenlabs_segments[:2]}")
+            
+            # Convert Pydantic models to dictionaries if needed
+            if elevenlabs_segments and isinstance(elevenlabs_segments, list):
+                elevenlabs_segments = [
+                    item.dict() if hasattr(item, "dict") else item 
+                    for item in elevenlabs_segments
+                ]
+                logger.info(f"Converted segments sample: {elevenlabs_segments[:2]}")
+            
             partial_results["elevenlabs"] = elevenlabs_segments
             
             # Update status for intermediate completion
             active_processes[process_id].status = ProcessStatus.ELEVENLABS_COMPLETE
             active_processes[process_id].updated_at = datetime.now().isoformat()
             active_processes[process_id].result = partial_results
+            
+            # Debug log for what we're storing
+            logger.info(f"Stored elevenlabs result type: {type(partial_results['elevenlabs'])}")
+            if isinstance(partial_results["elevenlabs"], list) and len(partial_results["elevenlabs"]) > 0:
+                logger.info(f"First elevenlabs result item type: {type(partial_results['elevenlabs'][0])}")
+                logger.info(f"First elevenlabs result item: {partial_results['elevenlabs'][0]}")
+            
         except Exception as e:
             logger.error(f"Error in ElevenLabs processing: {str(e)}")
             raise Exception(f"Speech-to-text processing failed: {str(e)}")
@@ -165,7 +187,7 @@ async def upload_file(background_tasks: BackgroundTasks, file: UploadFile = File
     
     return process_info
 
-@app.get("/status/{process_id}", response_model=ProcessInfo, summary="Check the status of a process")
+@app.get("/status/{process_id}", response_model=None, summary="Check the status of a process")
 async def check_status(process_id: str):
     """
     Check the status of a process.
@@ -175,7 +197,70 @@ async def check_status(process_id: str):
     if process_id not in active_processes:
         raise HTTPException(status_code=404, detail="Process not found")
     
-    return active_processes[process_id]
+    # Log the data we're returning
+    process_info = active_processes[process_id]
+    if process_info.result and "elevenlabs" in process_info.result:
+        logger.info(f"Status endpoint - elevenlabs result type: {type(process_info.result['elevenlabs'])}")
+        if isinstance(process_info.result["elevenlabs"], list) and len(process_info.result["elevenlabs"]) > 0:
+            logger.info(f"Status endpoint - first item type: {type(process_info.result['elevenlabs'][0])}")
+            # Check if it's a Pydantic model that needs to be converted
+            if hasattr(process_info.result["elevenlabs"][0], "dict"):
+                logger.info("Converting Pydantic models to dictionaries...")
+                # It's possible the data is still in Pydantic model form
+                process_info.result["elevenlabs"] = [
+                    item.dict() if hasattr(item, "dict") else item 
+                    for item in process_info.result["elevenlabs"]
+                ]
+    
+    # Convert to dict and ensure all objects are JSON serializable
+    try:
+        process_dict = process_info.dict()
+        # Test serialization
+        json.dumps(process_dict)
+        return process_dict
+    except TypeError as e:
+        logger.error(f"Serialization error: {str(e)}")
+        # Fall back to a simpler representation
+        safe_result = {
+            "id": process_info.id,
+            "status": process_info.status,
+            "created_at": process_info.created_at,
+            "updated_at": process_info.updated_at,
+            "error": process_info.error
+        }
+        
+        # Handle the result manually
+        if process_info.result:
+            safe_result["result"] = {}
+            if "elevenlabs" in process_info.result:
+                if isinstance(process_info.result["elevenlabs"], list):
+                    safe_result["result"]["elevenlabs"] = []
+                    for item in process_info.result["elevenlabs"]:
+                        if isinstance(item, dict):
+                            # Keep only primitive types
+                            safe_item = {
+                                "speaker_id": str(item.get("speaker_id", "speaker_0")),
+                                "content": str(item.get("content", ""))
+                            }
+                            safe_result["result"]["elevenlabs"].append(safe_item)
+                        elif hasattr(item, "dict"):
+                            # It's a Pydantic model
+                            item_dict = item.dict()
+                            safe_item = {
+                                "speaker_id": str(item_dict.get("speaker_id", "speaker_0")),
+                                "content": str(item_dict.get("content", ""))
+                            }
+                            safe_result["result"]["elevenlabs"].append(safe_item)
+                        else:
+                            # It's a primitive type like string
+                            safe_result["result"]["elevenlabs"].append(str(item))
+            
+            # Copy other result fields
+            for key in process_info.result:
+                if key != "elevenlabs":
+                    safe_result["result"][key] = process_info.result[key]
+        
+        return safe_result
 
 @app.post("/reprocess/{process_id}", response_model=ProcessInfo, summary="Reprocess an existing audio file")
 async def reprocess_audio(process_id: str, background_tasks: BackgroundTasks):

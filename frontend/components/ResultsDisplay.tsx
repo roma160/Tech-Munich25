@@ -62,18 +62,69 @@ const ResultsDisplay: React.FC<ResultsDisplayProps> = ({
 
   // Organize transcription by speaker
   const organizeTranscriptionBySpeaker = () => {
-    if (!result?.elevenlabs || !Array.isArray(result.elevenlabs)) {
+    if (!result?.elevenlabs) {
+      console.log("No elevenlabs results found");
       return [];
     }
 
-    // Extract segments with speaker information if available
-    const segments = result.elevenlabs.map((text, index) => {
-      // Extract speaker ID from the segment if available
-      const speakerId = `Speaker ${index % 2 + 1}`; // Alternate between Speaker 1 and 2 if not available
-      return { text, speakerId };
-    });
+    // Clean print for objects to filter out unnecessary details
+    const cleanPrint = (obj: any): any => {
+      if (Array.isArray(obj)) {
+        return obj.slice(0, 3).map(cleanPrint); // Show only first 3 items
+      } else if (typeof obj === 'object' && obj !== null) {
+        const clean: any = {};
+        Object.keys(obj).forEach(key => {
+          // Skip keys that look like IDs or timestamps
+          if (!key.includes('_id') && !key.includes('_at')) {
+            clean[key] = cleanPrint(obj[key]);
+          } else {
+            clean[key] = '[filtered]';
+          }
+        });
+        return clean;
+      }
+      return obj;
+    };
 
-    return segments;
+    console.log("ElevenLabs result type:", typeof result.elevenlabs);
+    console.log("ElevenLabs data sample:", 
+      Array.isArray(result.elevenlabs) 
+        ? cleanPrint(result.elevenlabs.slice(0, 3)) 
+        : cleanPrint(result.elevenlabs));
+
+    // Check if the segments already have speaker information
+    if (Array.isArray(result.elevenlabs) && result.elevenlabs.length > 0) {
+      console.log("ElevenLabs is array with length:", result.elevenlabs.length);
+      console.log("First item type:", typeof result.elevenlabs[0]);
+      console.log("First item:", result.elevenlabs[0]);
+      
+      // Check if each item has speaker_id and content
+      if (typeof result.elevenlabs[0] === 'object' && 
+          'speaker_id' in result.elevenlabs[0] && 
+          'content' in result.elevenlabs[0]) {
+        console.log("Found proper speaker format");
+        // Return as is - already properly formatted
+        return result.elevenlabs;
+      }
+      
+      // If they're just strings, create alternating speaker segments
+      if (typeof result.elevenlabs[0] === 'string') {
+        console.log("Found string array format");
+        return result.elevenlabs.map((text, index) => {
+          const speakerId = `speaker_${index % 2}`; // Alternate between speaker_0 and speaker_1
+          return { speaker_id: speakerId, content: text };
+        });
+      }
+    }
+    
+    // Fallback for unexpected format
+    if (typeof result.elevenlabs === 'string') {
+      console.log("Found single string format");
+      return [{ speaker_id: 'speaker_0', content: result.elevenlabs }];
+    }
+    
+    console.log("Unknown format, returning empty array");
+    return [];
   };
 
   // Extract just the phonetic text from allosaurus
@@ -89,6 +140,13 @@ const ResultsDisplay: React.FC<ResultsDisplayProps> = ({
     }
     
     return JSON.stringify(result.allosaurus);
+  };
+
+  // Get speaker name for display
+  const getSpeakerName = (speakerId: string): string => {
+    // Extract numeric part from speaker ID (e.g., "speaker_0" -> "0")
+    const speakerNumber = speakerId.split('_')[1] || '0';
+    return `Speaker ${parseInt(speakerNumber) + 1}`; // Make it 1-indexed for display
   };
 
   const progress = getProgress();
@@ -141,9 +199,16 @@ const ResultsDisplay: React.FC<ResultsDisplayProps> = ({
             {transcriptionSegments.length > 0 ? (
               <div>
                 {transcriptionSegments.map((segment, idx) => (
-                  <div key={idx} className={`p-3 mb-2 rounded-lg ${segment.speakerId.includes('1') ? 'bg-blue-50 text-blue-800' : 'bg-green-50 text-green-800'}`}>
-                    <div className="font-medium mb-1">{segment.speakerId}</div>
-                    <p>{segment.text}</p>
+                  <div 
+                    key={idx} 
+                    className={`p-3 mb-2 rounded-lg ${
+                      segment.speaker_id.includes('0') 
+                        ? 'bg-blue-50 text-blue-800' 
+                        : 'bg-green-50 text-green-800'
+                    }`}
+                  >
+                    <div className="font-medium mb-1">{getSpeakerName(segment.speaker_id)}</div>
+                    <p>{segment.content}</p>
                   </div>
                 ))}
               </div>

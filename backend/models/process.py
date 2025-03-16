@@ -27,4 +27,21 @@ class ProcessInfo(BaseModel):
     created_at: str
     updated_at: str
     result: Optional[Dict[str, Any]] = None
-    error: Optional[str] = None 
+    error: Optional[str] = None
+    
+    def dict(self, *args, **kwargs):
+        """
+        Override the default dict method to properly handle nested Pydantic models.
+        """
+        data = super().dict(*args, **kwargs)
+        
+        # Handle nested models in the result dictionary
+        if data.get("result") and "elevenlabs" in data["result"]:
+            if isinstance(data["result"]["elevenlabs"], list):
+                # Convert each item in the list if it has a dict method
+                data["result"]["elevenlabs"] = [
+                    item.dict() if hasattr(item, "dict") else item 
+                    for item in data["result"]["elevenlabs"]
+                ]
+        
+        return data 

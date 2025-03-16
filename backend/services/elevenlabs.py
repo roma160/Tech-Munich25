@@ -6,6 +6,7 @@ import aiohttp
 import asyncio
 from typing import Optional
 from models.elevenlabs import ElevenLabsOutput
+import json
 
 class ElevenLabsService:
     """
@@ -72,4 +73,18 @@ class ElevenLabsService:
                     raise Exception(f"ElevenLabs API error: {response.status}, {error_text}")
                 
                 response_json = await response.json()
+                
+                # Log the full response
+                print("FULL ELEVENLABS RESPONSE:")
+                print(json.dumps(response_json, indent=2))
+                
+                # Specifically check for speaker information
+                words = response_json.get("words", [])
+                speaker_ids = set()
+                for word in words[:20]:  # Check first 20 words
+                    if "speaker" in word:
+                        speaker_ids.add(word["speaker"])
+                
+                print(f"Found {len(speaker_ids)} unique speaker IDs in first 20 words: {speaker_ids}")
+                
                 return ElevenLabsOutput.from_response(response_json)
