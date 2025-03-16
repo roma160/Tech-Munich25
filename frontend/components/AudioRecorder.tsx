@@ -3,9 +3,15 @@ import Recorder from 'recorder-js';
 
 interface AudioRecorderProps {
   onRecordingComplete: (audioBlob: Blob) => void;
+  onFileUpload: (file: File) => void;
+  onUseSample: () => void;
 }
 
-const AudioRecorder: React.FC<AudioRecorderProps> = ({ onRecordingComplete }) => {
+const AudioRecorder: React.FC<AudioRecorderProps> = ({ 
+  onRecordingComplete, 
+  onFileUpload,
+  onUseSample
+}) => {
   const [isRecording, setIsRecording] = useState(false);
   const [recordingTime, setRecordingTime] = useState(0);
   const [audioUrl, setAudioUrl] = useState<string | null>(null);
@@ -14,6 +20,7 @@ const AudioRecorder: React.FC<AudioRecorderProps> = ({ onRecordingComplete }) =>
   const recorderRef = useRef<any>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const timerRef = useRef<NodeJS.Timeout | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     // Initialize audio context and recorder
@@ -91,13 +98,38 @@ const AudioRecorder: React.FC<AudioRecorderProps> = ({ onRecordingComplete }) =>
     return `${mins}:${secs}`;
   };
 
+  const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const files = event.target.files;
+    if (files && files.length > 0) {
+      const file = files[0];
+      if (file.type === 'audio/wav' || file.name.endsWith('.wav')) {
+        onFileUpload(file);
+        
+        // Create URL for audio preview
+        const audioURL = URL.createObjectURL(file);
+        setAudioUrl(audioURL);
+      } else {
+        alert('Please upload a WAV file');
+      }
+      
+      // Reset file input
+      if (fileInputRef.current) {
+        fileInputRef.current.value = '';
+      }
+    }
+  };
+
+  const handleUseSample = () => {
+    onUseSample();
+  };
+
   return (
     <div className="card">
       <h2 className="text-xl font-semibold mb-4">Audio Recorder</h2>
       
       {!isPermissionGranted ? (
         <div className="text-red-500 mb-4">
-          Microphone access is required. Please allow access in your browser settings.
+          Microphone access is required for recording. Please allow access in your browser settings.
         </div>
       ) : null}
       
@@ -122,6 +154,27 @@ const AudioRecorder: React.FC<AudioRecorderProps> = ({ onRecordingComplete }) =>
           >
             Stop Recording
           </button>
+        </div>
+        
+        {/* File upload section */}
+        <div className="mt-6 w-full">
+          <h3 className="font-semibold mb-2">Upload Audio</h3>
+          <div className="flex flex-col space-y-3">
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept="audio/wav"
+              onChange={handleFileChange}
+              className="w-full border p-2 rounded"
+            />
+            
+            <button 
+              onClick={handleUseSample}
+              className="btn bg-green-500 hover:bg-green-600 text-white"
+            >
+              Use Sample Audio
+            </button>
+          </div>
         </div>
         
         {audioUrl && (

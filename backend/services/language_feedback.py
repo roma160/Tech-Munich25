@@ -180,27 +180,57 @@ class LanguageFeedbackService:
                 {"role": "user", "content": transcript_text}
             ]
             
-            completion = self.client.chat(
-                model="mistral-large-latest",
-                messages=messages,
-                response_format={"type": "json_object"} 
-            )
-            
-            result = completion.choices[0].message.content
-            eval_response = EvaluationResponse(**json.loads(result))
+            try:
+                completion = self.client.chat(
+                    model="mistral-large-latest",
+                    messages=messages,
+                    response_format={"type": "json_object"} 
+                )
+                
+                result = completion.choices[0].message.content
+                result_json = json.loads(result)
+                
+                # Ensure all required fields are present
+                if 'mistakes' not in result_json:
+                    result_json['mistakes'] = []
+                if 'inaccuracies' not in result_json:
+                    result_json['inaccuracies'] = []
+                if 'vocabularies' not in result_json:
+                    result_json['vocabularies'] = []
+                    
+                # Create a valid EvaluationResponse
+                eval_response = EvaluationResponse(**result_json)
+            except Exception as e:
+                # If parsing fails, create a default response with the transcript
+                logger.error(f"Error processing transcript with Mistral: {str(e)}")
+                eval_response = EvaluationResponse(
+                    mistakes=[],
+                    inaccuracies=[],
+                    vocabularies=[]
+                )
         else:
-            completion = await self.client.beta.chat.completions.parse(
-                model="o1-2024-12-17",
-                messages=[
-                    {"role": "system", "content": PROMPT_PREFIX},
-                    {"role": "user", "content": transcript_text}
-                ],
-                response_format=EvaluationResponse,
-            )
-            
-            result = completion.choices[0].message.content
-            assert result is not None
-            eval_response = EvaluationResponse(**json.loads(result))
+            # OpenAI implementation
+            try:
+                completion = await self.client.beta.chat.completions.parse(
+                    model="o1-2024-12-17",
+                    messages=[
+                        {"role": "system", "content": PROMPT_PREFIX},
+                        {"role": "user", "content": transcript_text}
+                    ],
+                    response_format=EvaluationResponse,
+                )
+                
+                result = completion.choices[0].message.content
+                assert result is not None
+                eval_response = EvaluationResponse(**json.loads(result))
+            except Exception as e:
+                # If parsing fails, create a default response
+                logger.error(f"Error processing transcript with OpenAI: {str(e)}")
+                eval_response = EvaluationResponse(
+                    mistakes=[],
+                    inaccuracies=[],
+                    vocabularies=[]
+                )
 
         return LanguageFeedbackService.__convert_to_ranges(eval_response, elevenlabs_segments)
     

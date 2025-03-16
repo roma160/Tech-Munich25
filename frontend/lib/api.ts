@@ -1,19 +1,23 @@
 import axios from 'axios';
 
-const API_BASE_URL = '/api';  // This will use Next.js API rewrite to proxy to backend
+// Create a custom axios instance with specific configuration
+const apiClient = axios.create({
+  baseURL: '/api',
+});
 
 // Response interface from backend
 export interface ProcessResponse {
   id: string;
-  status: 'pending' | 'processing' | 'completed' | 'failed';
+  status: 'pending' | 'elevenlabs_processing' | 'elevenlabs_complete' | 
+          'allosaurus_processing' | 'allosaurus_complete' | 
+          'mistral_processing' | 'complete' | 'failed';
   created_at: string;
   updated_at: string;
   result?: {
-    transcription?: string;
-    phonemes?: string;
-    allosaurus?: any;
     elevenlabs?: any;
     mistral?: any;
+    summary?: string;
+    allosaurus?: any;
   };
   error?: string;
 }
@@ -29,7 +33,7 @@ export const uploadAudio = async (file: File): Promise<UploadResponse> => {
     const formData = new FormData();
     formData.append('file', file);
     
-    const response = await axios.post<UploadResponse>(`${API_BASE_URL}/upload`, formData, {
+    const response = await apiClient.post<UploadResponse>('/upload', formData, {
       headers: {
         'Content-Type': 'multipart/form-data',
       },
@@ -47,7 +51,7 @@ export const uploadAudio = async (file: File): Promise<UploadResponse> => {
  */
 export const checkStatus = async (processId: string): Promise<ProcessResponse> => {
   try {
-    const response = await axios.get<ProcessResponse>(`${API_BASE_URL}/status/${processId}`);
+    const response = await apiClient.get<ProcessResponse>(`/status/${processId}`);
     return response.data;
   } catch (error) {
     console.error('Error checking status:', error);
@@ -71,7 +75,7 @@ export const pollStatus = (
       const response = await checkStatus(processId);
       onUpdate(response);
       
-      if (response.status !== 'completed' && response.status !== 'failed' && attempts < maxAttempts) {
+      if (response.status !== 'complete' && response.status !== 'failed' && attempts < maxAttempts) {
         attempts++;
         setTimeout(poll, intervalMs);
       }
@@ -88,4 +92,30 @@ export const pollStatus = (
   };
   
   poll();
+};
+
+/**
+ * Request reprocessing of an existing audio file
+ */
+export const reprocessAudio = async (processId: string): Promise<UploadResponse> => {
+  try {
+    const response = await apiClient.post<UploadResponse>(`/reprocess/${processId}`);
+    return response.data;
+  } catch (error) {
+    console.error('Error reprocessing audio:', error);
+    throw error;
+  }
+};
+
+/**
+ * Request processing of the sample.wav file
+ */
+export const useSampleAudio = async (): Promise<UploadResponse> => {
+  try {
+    const response = await apiClient.post<UploadResponse>('/use-sample');
+    return response.data;
+  } catch (error) {
+    console.error('Error processing sample audio:', error);
+    throw error;
+  }
 }; 

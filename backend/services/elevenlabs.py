@@ -44,18 +44,20 @@ class ElevenLabsService:
         # Prepare headers and data for the request
         headers = {
             "xi-api-key": self.api_key,
+            "accept": "application/json"
         }
         
         data = aiohttp.FormData()
         data.add_field(
-            "audio", 
+            "file",  # Use 'file' instead of 'audio' as the field name
             file_data, 
             filename=os.path.basename(file_path),
             content_type="audio/wav"
         )
         
         # Add parameters for speech-to-text
-        data.add_field("model_id", "eleven_turbo_v2")
+        data.add_field("model_id", "scribe_v1")  # Use scribe_v1 instead of eleven_turbo_v2
+        data.add_field("diarize", "true")  # Enable speaker diarization
         data.add_field("language", "de")  # German language
         
         # Make the API call
@@ -65,5 +67,9 @@ class ElevenLabsService:
                 headers=headers,
                 data=data
             ) as response:
+                if response.status != 200:
+                    error_text = await response.text()
+                    raise Exception(f"ElevenLabs API error: {response.status}, {error_text}")
+                
                 response_json = await response.json()
                 return ElevenLabsOutput.from_response(response_json)
