@@ -52,10 +52,6 @@ async def process_wav_file(process_id: str, file_path: str):
         # Step 1: Send to ElevenLabs for speech-to-text
         elevenlabs_result = await elevenlabs_service.speech_to_text(file_path)
         
-        # Update status after ElevenLabs
-        active_processes[process_id].status = ProcessStatus.ELEVENLABS_COMPLETE
-        active_processes[process_id].updated_at = datetime.now().isoformat()
-        
         # Step 2: Send to Mistral
         active_processes[process_id].status = ProcessStatus.MISTRAL_PROCESSING
         active_processes[process_id].updated_at = datetime.now().isoformat()
