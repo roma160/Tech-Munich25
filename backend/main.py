@@ -5,6 +5,7 @@ from datetime import datetime
 from fastapi import FastAPI, UploadFile, HTTPException, BackgroundTasks, File
 from fastapi.middleware.cors import CORSMiddleware
 import uvicorn
+import logging
 
 from models.process import ProcessStatus, ProcessInfo
 
@@ -41,6 +42,8 @@ active_processes = {}
 mistral_service = LanguageFeedbackService() 
 elevenlabs_service = ElevenLabsService() 
 
+logger = logging.getLogger(__name__)
+
 
 # Process WAV file
 async def process_wav_file(process_id: str, file_path: str):
@@ -48,9 +51,11 @@ async def process_wav_file(process_id: str, file_path: str):
         # Update status to ElevenLabs processing
         active_processes[process_id].status = ProcessStatus.ELEVENLABS_PROCESSING
         active_processes[process_id].updated_at = datetime.now().isoformat()
+        logger.warning(f"Started processing file at {datetime.now().isoformat()}")
         
         # Step 1: Send to ElevenLabs for speech-to-text
         elevenlabs_result = await elevenlabs_service.speech_to_text(file_path)
+        logger.warning(f"Finished processing file at {datetime.now().isoformat()}")
         
         # Step 2: Send to Mistral
         active_processes[process_id].status = ProcessStatus.MISTRAL_PROCESSING
@@ -59,6 +64,7 @@ async def process_wav_file(process_id: str, file_path: str):
         # Extract text from ElevenLabs result and send to Mistral
         elevenlabs_segments = elevenlabs_result.extract_segments()
         mistral_result = await mistral_service.process_transcript(elevenlabs_result, elevenlabs_segments)
+        logger.warning(f"Finished processing file at {datetime.now().isoformat()}")
         
         # Update process with final result
         active_processes[process_id].status = ProcessStatus.COMPLETE
