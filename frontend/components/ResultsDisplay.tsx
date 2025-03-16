@@ -152,6 +152,66 @@ const ResultsDisplay: React.FC<ResultsDisplayProps> = ({
   const progress = getProgress();
   const transcriptionSegments = organizeTranscriptionBySpeaker();
 
+  // Helper function to highlight errors in text
+  const highlightErrorsInText = (text: string, speakerSegmentIndex: number) => {
+    if (!results?.result?.mistral) return text; // No errors to highlight
+
+    // Combine all error types that have ranges
+    const allErrors = [
+      ...(results.result.mistral.mistakes || []).filter((err: any) => err.found_range && err.ranges),
+      ...(results.result.mistral.inaccuracies || []).filter((err: any) => err.found_range && err.ranges)
+    ];
+
+    // No errors with ranges
+    if (!allErrors.length) return text;
+
+    // Find errors that apply to this segment
+    const segmentErrors = allErrors.filter((err: any) => 
+      err.ranges.some((range: any) => range[0] === speakerSegmentIndex)
+    );
+
+    if (!segmentErrors.length) return text;
+    
+    // Sort errors by their position in text (start index)
+    const sortedErrors = segmentErrors.flatMap((err: any) => 
+      err.ranges
+        .filter((range: any) => range[0] === speakerSegmentIndex)
+        .map((range: any) => ({
+          start: range[1],
+          end: range[2],
+          type: err.error_type,
+          correction: err.correction
+        }))
+    ).sort((a, b) => a.start - b.start);
+
+    // Replace text parts with highlighted versions
+    let resultHtml = '';
+    let lastIndex = 0;
+
+    for (const error of sortedErrors) {
+      // Add text before the error
+      resultHtml += text.substring(lastIndex, error.start);
+      
+      // Add the highlighted error
+      const errorText = text.substring(error.start, error.end);
+      const errorClass = error.type.includes('grammatical') ? 'text-red-600 font-bold underline' :
+                       error.type.includes('stylistic') ? 'text-yellow-600 font-bold underline' :
+                       'text-orange-600 font-bold underline';
+                       
+      // Create a tooltip with error details                 
+      const tooltip = `${error.type}: "${errorText}" → "${error.correction}"`;
+      
+      resultHtml += `<span class="${errorClass}" title="${tooltip}">${errorText}</span>`;
+      
+      lastIndex = error.end;
+    }
+    
+    // Add remaining text
+    resultHtml += text.substring(lastIndex);
+    
+    return resultHtml;
+  };
+
   return (
     <div className="card">
       <h2 className="text-xl font-semibold mb-4">Results {status !== 'complete' && `(${status})`}</h2>
@@ -208,7 +268,9 @@ const ResultsDisplay: React.FC<ResultsDisplayProps> = ({
                     }`}
                   >
                     <div className="font-medium mb-1">{getSpeakerName(segment.speaker_id)}</div>
-                    <p>{segment.content}</p>
+                    <p dangerouslySetInnerHTML={{
+                      __html: highlightErrorsInText(segment.content, idx)
+                    }}></p>
                   </div>
                 ))}
               </div>
@@ -278,7 +340,25 @@ const ResultsDisplay: React.FC<ResultsDisplayProps> = ({
                     {Array.isArray(result.mistral.mistakes) && result.mistral.mistakes.length > 0 ? (
                       <ul className="list-disc pl-5 space-y-1">
                         {result.mistral.mistakes.map((mistake: any, idx: number) => (
-                          <li key={idx} className="text-red-700">{typeof mistake === 'string' ? mistake : JSON.stringify(mistake)}</li>
+                          <li key={idx} className="text-red-700">
+                            {mistake.found_range ? (
+                              // Highlight the error and show correction
+                              <div>
+                                <span className="font-bold text-red-800">{mistake.quote}</span>
+                                <span className="text-gray-700"> → </span>
+                                <span className="text-green-700">{mistake.correction}</span>
+                                <span className="text-xs text-red-600 ml-2">({mistake.error_type})</span>
+                              </div>
+                            ) : (
+                              // Display without highlight but still show the error
+                              <div>
+                                <span className="font-medium">{mistake.quote}</span>
+                                <span className="text-gray-700"> → </span>
+                                <span className="text-green-700">{mistake.correction}</span>
+                                <span className="text-xs text-red-600 ml-2">({mistake.error_type})</span>
+                              </div>
+                            )}
+                          </li>
                         ))}
                       </ul>
                     ) : (
@@ -293,7 +373,21 @@ const ResultsDisplay: React.FC<ResultsDisplayProps> = ({
                       <ul className="list-disc pl-5 space-y-1">
                         {result.mistral.inaccuracies.slice(0, 5).map((item: any, idx: number) => (
                           <li key={idx} className="text-yellow-700">
-                            {typeof item === 'string' ? item : 'Inaccuracy detected'}
+                            {item.found_range ? (
+                              <div>
+                                <span className="font-bold text-yellow-800">{item.quote}</span>
+                                <span className="text-gray-700"> → </span>
+                                <span className="text-green-700">{item.correction}</span>
+                                <span className="text-xs text-yellow-600 ml-2">({item.error_type})</span>
+                              </div>
+                            ) : (
+                              <div>
+                                <span className="font-medium">{item.quote}</span>
+                                <span className="text-gray-700"> → </span>
+                                <span className="text-green-700">{item.correction}</span>
+                                <span className="text-xs text-yellow-600 ml-2">({item.error_type})</span>
+                              </div>
+                            )}
                           </li>
                         ))}
                         {result.mistral.inaccuracies.length > 5 && (
@@ -304,6 +398,34 @@ const ResultsDisplay: React.FC<ResultsDisplayProps> = ({
                       </ul>
                     ) : (
                       <p className="text-gray-600">No inaccuracies detected</p>
+                    )}
+                  </div>
+                  
+                  {/* Vocabularies section */}
+                  <div className="p-4 bg-green-50 rounded-lg">
+                    <h4 className="font-medium text-green-800 mb-2">Vocabulary Suggestions</h4>
+                    {Array.isArray(result.mistral.vocabularies) && result.mistral.vocabularies.length > 0 ? (
+                      <ul className="list-disc pl-5 space-y-1">
+                        {result.mistral.vocabularies.map((item: any, idx: number) => (
+                          <li key={idx} className="text-green-700">
+                            {item.found_range ? (
+                              <div>
+                                <span className="font-bold text-green-800">{item.quote}</span>
+                                <span className="text-gray-700"> → </span>
+                                <span className="text-blue-700">{item.synonyms.join(', ')}</span>
+                              </div>
+                            ) : (
+                              <div>
+                                <span className="font-medium">{item.quote}</span>
+                                <span className="text-gray-700"> → </span>
+                                <span className="text-blue-700">{item.synonyms.join(', ')}</span>
+                              </div>
+                            )}
+                          </li>
+                        ))}
+                      </ul>
+                    ) : (
+                      <p className="text-gray-600">No vocabulary suggestions available</p>
                     )}
                   </div>
                 </>

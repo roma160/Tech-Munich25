@@ -1,5 +1,5 @@
 from pydantic import BaseModel
-from typing import List, Tuple
+from typing import List, Tuple, Optional
 
 class ErrorItem(BaseModel):
     quote: str
@@ -17,13 +17,17 @@ class EvaluationResponse(BaseModel):
 
 
 class ErrorItemRanged(BaseModel):
-    ranges: List[Tuple[int, int, int]]
+    ranges: Optional[List[Tuple[int, int, int]]] = None
     error_type: str
     correction: str
+    quote: str
+    found_range: bool = True
 
 class VocabItemRanged(BaseModel):
-    range: Tuple[int, int, int]
+    range: Optional[Tuple[int, int, int]] = None
     synonyms: List[str]
+    quote: str
+    found_range: bool = True
 
 class EvaluationResponseRanged(BaseModel):
     mistakes: List[ErrorItemRanged]

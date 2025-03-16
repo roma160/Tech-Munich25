@@ -261,7 +261,7 @@ class LanguageFeedbackService:
             return None
     
     @staticmethod
-    def __convert_error_item_to_ranged(error_item: ErrorItem, elevenlabs_segments: List[str]) -> Optional[ErrorItemRanged]:
+    def __convert_error_item_to_ranged(error_item: ErrorItem, elevenlabs_segments: List[str]) -> ErrorItemRanged:
         ranges = []
 
         for i, segment in enumerate(elevenlabs_segments):
@@ -280,16 +280,24 @@ class LanguageFeedbackService:
         
         if not ranges:
             logger.warning(f"Could not find substring range for error item: {error_item}")
-            return None
+            return ErrorItemRanged(
+                ranges=None,
+                error_type=error_item.error_type,
+                correction=error_item.correction,
+                quote=error_item.quote,
+                found_range=False
+            )
         
         return ErrorItemRanged(
             ranges=ranges,
             error_type=error_item.error_type,
-            correction=error_item.correction
+            correction=error_item.correction,
+            quote=error_item.quote,
+            found_range=True
         )
     
     @staticmethod
-    def __convert_vocab_item_to_ranged(vocab_item: VocabItem, elevenlabs_segments: List[str]) -> Optional[VocabItemRanged]:
+    def __convert_vocab_item_to_ranged(vocab_item: VocabItem, elevenlabs_segments: List[str]) -> VocabItemRanged:
         range = None
         for i, segment in enumerate(elevenlabs_segments):
             if i % 2 == 1:
@@ -304,11 +312,18 @@ class LanguageFeedbackService:
 
         if range is None:
             logger.warning(f"Could not find substring range for error item: {vocab_item}")
-            return None
+            return VocabItemRanged(
+                range=None,
+                synonyms=vocab_item.synonyms,
+                quote=vocab_item.quote,
+                found_range=False
+            )
         
         return VocabItemRanged(
             range=range,
-            synonyms=vocab_item.synonyms
+            synonyms=vocab_item.synonyms,
+            quote=vocab_item.quote,
+            found_range=True
         )
 
     @staticmethod
@@ -317,22 +332,19 @@ class LanguageFeedbackService:
         for error_item in response.mistakes:
             ranged_error = LanguageFeedbackService.__convert_error_item_to_ranged(
                 error_item, elevenlabs_segments)
-            if ranged_error:
-                mistakes.append(ranged_error)
+            mistakes.append(ranged_error)
         
         inaccuracies = []
         for error_item in response.inaccuracies:
             ranged_error = LanguageFeedbackService.__convert_error_item_to_ranged(
                 error_item, elevenlabs_segments)
-            if ranged_error:
-                inaccuracies.append(ranged_error)
+            inaccuracies.append(ranged_error)
 
         vocabularies = []
         for vocab_item in response.vocabularies:
             ranged_vocab = LanguageFeedbackService.__convert_vocab_item_to_ranged(
                 vocab_item, elevenlabs_segments)
-            if ranged_vocab:
-                vocabularies.append(ranged_vocab)
+            vocabularies.append(ranged_vocab)
         
         return EvaluationResponseRanged(
             mistakes=mistakes,
