@@ -147,6 +147,11 @@ Für jeden identifizierten Fehler sollst du ein JSON-Objekt mit folgendem Format
 4. Liefere NUR valides JSON ohne zusätzlichen Text oder Erklärungen.
 
 5. Stelle sicher, dass jede "quote" ausreichend Kontext enthält, um die genaue Position im Text eindeutig zu identifizieren. Bei längeren Fehlern sollte der gesamte relevante Satz oder Teilsatz zitiert werden.
+
+6. Falls du keine Fehler, Unstimmigkeiten oder Vokabelempfehlungen identifizieren kannst, gib für die entsprechende Kategorie ein leeres Array zurück. Beispiel:
+   - Wenn keine Fehler gefunden wurden: "mistakes": []
+   - Wenn keine Unstimmigkeiten gefunden wurden: "inaccuracies": []
+   - Wenn keine Vokabelempfehlungen gegeben werden können: "vocabularies": []
 """
 
 logger = logging.getLogger(__name__)
