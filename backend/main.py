@@ -74,9 +74,10 @@ async def process_wav_file(process_id: str, file_path: str):
         active_processes[process_id].error = str(e)
         
     finally:
+        pass
         # Clean up the temporary file
-        if os.path.exists(file_path):
-            os.remove(file_path)
+        # if os.path.exists(file_path):
+        #     os.remove(file_path)
 
 @app.post("/upload", response_model=ProcessInfo, summary="Upload a WAV file for processing")
 async def upload_file(background_tasks: BackgroundTasks, file: UploadFile = File(...)):
