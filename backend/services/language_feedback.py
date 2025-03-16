@@ -15,7 +15,9 @@ from models.language_feedback import (
     ErrorItem,
     ErrorItemRanged,
     VocabItem,
-    VocabItemRanged
+    VocabItemRanged,
+    PhoneticItem,
+    PhoneticItemRanged
 )
 
 PROMPT_PREFIX = """
@@ -154,6 +156,33 @@ Für jeden identifizierten Fehler sollst du ein JSON-Objekt mit folgendem Format
    - Wenn keine Vokabelempfehlungen gegeben werden können: "vocabularies": []
 """
 
+PHONETICS_PROMPT_EXTENSION = """
+4. **Phonetik/Aussprache:** Identifiziere Aussprachefehler oder Verbesserungsmöglichkeiten in der Sprechweise der Person:
+   - Falsche Betonung von Wörtern oder Silben
+   - Falsche Aussprache von Umlauten (ä, ö, ü) oder Diphthongen (ei, eu, au)
+   - Probleme mit schwierigen Konsonanten (ch, sch, z)
+   - Inkonsistente Sprechmelodie oder Intonation
+   - Schwierigkeiten mit der Aussprache bestimmter Lautkombinationen
+
+   **Beispiele:**
+   - Bei dem Wort "Büro" werden oft Schwierigkeiten mit dem ü-Laut beobachtet
+     - Quote: "Büro"
+     - Phonetisches Problem: "Der ü-Laut wird zu offen ausgesprochen, ähnlich einem 'u'"
+     - Vorgeschlagene Aussprache: "Beim ü die Lippen runden und leicht nach vorne schieben, ähnlich wie beim Pfeifen"
+   
+   - Das 'ch' im Wort "ich" wird oft falsch ausgesprochen
+     - Quote: "ich"
+     - Phonetisches Problem: "Das 'ch' wird zu hart ausgesprochen, ähnlich wie 'k'"
+     - Vorgeschlagene Aussprache: "Den 'ch'-Laut weicher aussprechen, wie ein sanftes Hauchen mit der Zunge am Gaumen"
+
+Für jede phonetische Beobachtung, erstelle ein JSON-Objekt im folgenden Format:
+{
+  "quote": "das betroffene Wort oder die Phrase",
+  "phonetic_issue": "eine Beschreibung des Ausspracheproblems",
+  "suggested_pronunciation": "ein hilfreicher Tipp zur korrekten Aussprache"
+}
+"""
+
 logger = logging.getLogger(__name__)
 
 class LanguageFeedbackService:
@@ -170,13 +199,35 @@ class LanguageFeedbackService:
         else:
             self.client = AsyncOpenAI(api_key=api_key)
     
-    async def process_transcript(self, transcript: ElevenLabsOutput, elevenlabs_segments: List[str]) -> EvaluationResponseRanged:
+    async def process_transcript(
+        self, 
+        transcript: ElevenLabsOutput, 
+        elevenlabs_segments: List[str], 
+        include_phonetics: bool = False,
+        phonetics_data = None
+    ) -> EvaluationResponseRanged:
         transcript_text = transcript.extract_text()
+        
+        # Create the prompt with optional phonetics section
+        prompt = PROMPT_PREFIX
+        if include_phonetics:
+            prompt += PHONETICS_PROMPT_EXTENSION
+            
+            # Add phonetics data from Allosaurus if available
+            if phonetics_data:
+                phonetics_info = ""
+                if isinstance(phonetics_data, dict) and "text" in phonetics_data:
+                    phonetics_info = f"\n\nBeachte folgende phonetische Transkription des Audios:\n{phonetics_data['text']}"
+                elif isinstance(phonetics_data, str):
+                    phonetics_info = f"\n\nBeachte folgende phonetische Transkription des Audios:\n{phonetics_data}"
+                
+                if phonetics_info:
+                    prompt += phonetics_info
         
         if self.use_mistral:
             # Mistral AI implementation
             messages = [
-                {"role": "system", "content": PROMPT_PREFIX},
+                {"role": "system", "content": prompt},
                 {"role": "user", "content": transcript_text}
             ]
             
@@ -197,6 +248,8 @@ class LanguageFeedbackService:
                     result_json['inaccuracies'] = []
                 if 'vocabularies' not in result_json:
                     result_json['vocabularies'] = []
+                if 'phonetics' not in result_json:
+                    result_json['phonetics'] = []
                     
                 # Create a valid EvaluationResponse
                 eval_response = EvaluationResponse(**result_json)
@@ -206,7 +259,8 @@ class LanguageFeedbackService:
                 eval_response = EvaluationResponse(
                     mistakes=[],
                     inaccuracies=[],
-                    vocabularies=[]
+                    vocabularies=[],
+                    phonetics=[]
                 )
         else:
             # OpenAI implementation
@@ -214,7 +268,7 @@ class LanguageFeedbackService:
                 completion = await self.client.beta.chat.completions.parse(
                     model="o1-2024-12-17",
                     messages=[
-                        {"role": "system", "content": PROMPT_PREFIX},
+                        {"role": "system", "content": prompt},
                         {"role": "user", "content": transcript_text}
                     ],
                     response_format=EvaluationResponse,
@@ -229,7 +283,8 @@ class LanguageFeedbackService:
                 eval_response = EvaluationResponse(
                     mistakes=[],
                     inaccuracies=[],
-                    vocabularies=[]
+                    vocabularies=[],
+                    phonetics=[]
                 )
 
         return LanguageFeedbackService.__convert_to_ranges(eval_response, elevenlabs_segments)
@@ -327,6 +382,38 @@ class LanguageFeedbackService:
         )
 
     @staticmethod
+    def __convert_phonetic_item_to_ranged(phonetic_item: PhoneticItem, elevenlabs_segments: List[str]) -> PhoneticItemRanged:
+        range = None
+        for i, segment in enumerate(elevenlabs_segments):
+            if i % 2 == 1:
+                continue
+
+            range = LanguageFeedbackService.__find_substring_range(
+                segment, phonetic_item.quote
+            )
+            if range:
+                range = (i, range[0], range[1])
+                break
+
+        if range is None:
+            logger.warning(f"Could not find substring range for phonetic item: {phonetic_item}")
+            return PhoneticItemRanged(
+                range=None,
+                phonetic_issue=phonetic_item.phonetic_issue,
+                suggested_pronunciation=phonetic_item.suggested_pronunciation,
+                quote=phonetic_item.quote,
+                found_range=False
+            )
+        
+        return PhoneticItemRanged(
+            range=range,
+            phonetic_issue=phonetic_item.phonetic_issue,
+            suggested_pronunciation=phonetic_item.suggested_pronunciation,
+            quote=phonetic_item.quote,
+            found_range=True
+        )
+
+    @staticmethod
     def __convert_to_ranges(response: EvaluationResponse, elevenlabs_segments: List[str]) -> EvaluationResponseRanged:
         mistakes = []
         for error_item in response.mistakes:
@@ -345,11 +432,18 @@ class LanguageFeedbackService:
             ranged_vocab = LanguageFeedbackService.__convert_vocab_item_to_ranged(
                 vocab_item, elevenlabs_segments)
             vocabularies.append(ranged_vocab)
+            
+        phonetics = []
+        for phonetic_item in response.phonetics:
+            ranged_phonetic = LanguageFeedbackService.__convert_phonetic_item_to_ranged(
+                phonetic_item, elevenlabs_segments)
+            phonetics.append(ranged_phonetic)
         
         return EvaluationResponseRanged(
             mistakes=mistakes,
             inaccuracies=inaccuracies,
-            vocabularies=vocabularies
+            vocabularies=vocabularies,
+            phonetics=phonetics
         )
 
     

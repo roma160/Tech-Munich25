@@ -10,10 +10,16 @@ class VocabItem(BaseModel):
     quote: str
     synonyms: List[str]
 
+class PhoneticItem(BaseModel):
+    quote: str
+    phonetic_issue: str
+    suggested_pronunciation: str
+
 class EvaluationResponse(BaseModel):
     mistakes: List[ErrorItem]
     inaccuracies: List[ErrorItem]
     vocabularies: List[VocabItem]
+    phonetics: List[PhoneticItem] = []
 
 
 class ErrorItemRanged(BaseModel):
@@ -29,7 +35,15 @@ class VocabItemRanged(BaseModel):
     quote: str
     found_range: bool = True
 
+class PhoneticItemRanged(BaseModel):
+    range: Optional[Tuple[int, int, int]] = None
+    phonetic_issue: str
+    suggested_pronunciation: str
+    quote: str
+    found_range: bool = True
+
 class EvaluationResponseRanged(BaseModel):
     mistakes: List[ErrorItemRanged]
     inaccuracies: List[ErrorItemRanged]
     vocabularies: List[VocabItemRanged]
+    phonetics: List[PhoneticItemRanged] = []

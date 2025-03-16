@@ -10,7 +10,7 @@ export interface ProcessResponse {
   id: string;
   status: 'pending' | 'elevenlabs_processing' | 'elevenlabs_complete' | 
           'allosaurus_processing' | 'allosaurus_complete' | 
-          'mistral_processing' | 'complete' | 'failed';
+          'mistral_processing' | 'complete' | 'failed' | 'uploaded';
   created_at: string;
   updated_at: string;
   result?: {
@@ -97,9 +97,17 @@ export const pollStatus = (
 /**
  * Request reprocessing of an existing audio file
  */
-export const reprocessAudio = async (processId: string): Promise<UploadResponse> => {
+export const reprocessAudio = async (processId: string, includePhonetics: boolean = false): Promise<UploadResponse> => {
   try {
-    const response = await apiClient.post<UploadResponse>(`/reprocess/${processId}`);
+    // Create URLSearchParams for form data
+    const formData = new URLSearchParams();
+    formData.append('includePhonetics', includePhonetics.toString());
+    
+    const response = await apiClient.post<UploadResponse>(`/reprocess/${processId}`, formData, {
+      headers: {
+        'Content-Type': 'application/x-www-form-urlencoded',
+      },
+    });
     return response.data;
   } catch (error) {
     console.error('Error reprocessing audio:', error);
@@ -110,12 +118,41 @@ export const reprocessAudio = async (processId: string): Promise<UploadResponse>
 /**
  * Request processing of the sample.wav file
  */
-export const useSampleAudio = async (): Promise<UploadResponse> => {
+export const useSampleAudio = async (includePhonetics: boolean = false): Promise<UploadResponse> => {
   try {
-    const response = await apiClient.post<UploadResponse>('/use-sample');
+    // Create URLSearchParams for form data
+    const formData = new URLSearchParams();
+    formData.append('includePhonetics', includePhonetics.toString());
+    
+    const response = await apiClient.post<UploadResponse>('/use-sample', formData, {
+      headers: {
+        'Content-Type': 'application/x-www-form-urlencoded',
+      },
+    });
     return response.data;
   } catch (error) {
     console.error('Error processing sample audio:', error);
+    throw error;
+  }
+};
+
+/**
+ * Start processing a previously uploaded file
+ */
+export const startProcessing = async (processId: string, includePhonetics: boolean = false): Promise<UploadResponse> => {
+  try {
+    // Create URLSearchParams for form data
+    const formData = new URLSearchParams();
+    formData.append('includePhonetics', includePhonetics.toString());
+    
+    const response = await apiClient.post<UploadResponse>(`/start-processing/${processId}`, formData, {
+      headers: {
+        'Content-Type': 'application/x-www-form-urlencoded',
+      },
+    });
+    return response.data;
+  } catch (error) {
+    console.error('Error starting processing:', error);
     throw error;
   }
 }; 

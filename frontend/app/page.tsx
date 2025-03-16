@@ -3,7 +3,7 @@
 import { useState } from 'react';
 import AudioRecorder from '../components/AudioRecorder';
 import ResultsDisplay from '../components/ResultsDisplay';
-import { uploadAudio, pollStatus, reprocessAudio, useSampleAudio, ProcessResponse } from '../lib/api';
+import { uploadAudio, pollStatus, reprocessAudio, useSampleAudio, ProcessResponse, startProcessing } from '../lib/api';
 import Link from 'next/link';
 
 // Interface for recording entry
@@ -19,6 +19,7 @@ export default function Home() {
   const [isUploading, setIsUploading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [selectedRecordingId, setSelectedRecordingId] = useState<string | null>(null);
+  const [includePhonetics, setIncludePhonetics] = useState(false);
 
   const handleRecordingComplete = async (audioBlob: Blob) => {
     try {
@@ -31,12 +32,12 @@ export default function Home() {
       // Create URL for audio preview
       const audioURL = URL.createObjectURL(audioBlob);
       
-      // Upload to backend
+      // Upload to backend - only upload, no processing yet
       const response = await uploadAudio(file);
       const newRecording: RecordingEntry = {
         id: response.id,
         response,
-        isProcessing: true,
+        isProcessing: false, // Not processing yet
         audioUrl: audioURL
       };
       
@@ -45,21 +46,6 @@ export default function Home() {
       setSelectedRecordingId(response.id);
       
       setIsUploading(false);
-      
-      // Poll for status updates
-      pollStatus(response.id, (updatedResponse) => {
-        setRecordings(prev => 
-          prev.map(rec => 
-            rec.id === response.id 
-              ? { 
-                  ...rec, 
-                  response: updatedResponse, 
-                  isProcessing: !(updatedResponse.status === 'complete' || updatedResponse.status === 'failed')
-                } 
-              : rec
-          )
-        );
-      });
     } catch (err) {
       setIsUploading(false);
       setError(err instanceof Error ? err.message : 'An unknown error occurred');
@@ -76,13 +62,13 @@ export default function Home() {
       // Create URL for audio preview
       const audioURL = URL.createObjectURL(file);
       
-      // Upload to backend
+      // Upload to backend - only upload, no processing yet
       const response = await uploadAudio(file);
       const newRecording: RecordingEntry = {
         id: response.id,
         response,
-        isProcessing: true,
-        audioUrl: audioURL // Store the audio URL
+        isProcessing: false, // Not processing yet
+        audioUrl: audioURL
       };
       
       // Add to recordings list
@@ -90,12 +76,49 @@ export default function Home() {
       setSelectedRecordingId(response.id);
       
       setIsUploading(false);
+    } catch (err) {
+      setIsUploading(false);
+      setError(err instanceof Error ? err.message : 'An unknown error occurred');
+      console.error('Error processing audio file:', err);
+    }
+  };
+
+  // Handle starting processing for a recording
+  const handleStartProcessing = async () => {
+    if (!selectedRecordingId) return;
+    
+    try {
+      setIsUploading(true);
+      setError(null);
+      
+      // Update the recording to processing state
+      setRecordings(prev => 
+        prev.map(rec => 
+          rec.id === selectedRecordingId 
+            ? { ...rec, isProcessing: true } 
+            : rec
+        )
+      );
+      
+      // Start processing
+      const response = await startProcessing(selectedRecordingId, includePhonetics);
+      
+      // Update recordings list with the new status
+      setRecordings(prev => 
+        prev.map(rec => 
+          rec.id === selectedRecordingId 
+            ? { ...rec, response: response } 
+            : rec
+        )
+      );
+      
+      setIsUploading(false);
       
       // Poll for status updates
-      pollStatus(response.id, (updatedResponse) => {
+      pollStatus(selectedRecordingId, (updatedResponse) => {
         setRecordings(prev => 
           prev.map(rec => 
-            rec.id === response.id 
+            rec.id === selectedRecordingId 
               ? { 
                   ...rec, 
                   response: updatedResponse, 
@@ -108,7 +131,7 @@ export default function Home() {
     } catch (err) {
       setIsUploading(false);
       setError(err instanceof Error ? err.message : 'An unknown error occurred');
-      console.error('Error processing audio file:', err);
+      console.error('Error starting processing:', err);
     }
   };
 
@@ -121,8 +144,9 @@ export default function Home() {
       // Create audio URL for sample.wav
       const sampleAudioURL = "/api/sample.wav"; // URL to sample file
       
-      // Request processing of sample file
-      const response = await useSampleAudio();
+      // Request processing of sample file - for simplicity, we'll use the existing endpoint which
+      // processes it immediately
+      const response = await useSampleAudio(includePhonetics);
       const newRecording: RecordingEntry = {
         id: response.id,
         response,
@@ -172,7 +196,7 @@ export default function Home() {
       }
       
       // Send reprocess request
-      const response = await reprocessAudio(selectedRecordingId);
+      const response = await reprocessAudio(selectedRecordingId, includePhonetics);
       const newRecording: RecordingEntry = {
         id: response.id,
         response,
@@ -203,7 +227,7 @@ export default function Home() {
     } catch (err) {
       setIsUploading(false);
       setError(err instanceof Error ? err.message : 'An unknown error occurred');
-      console.error('Error reprocessing audio:', err);
+      console.error('Error reprocessing recording:', err);
     }
   };
 
@@ -279,6 +303,9 @@ export default function Home() {
             isLoading={selectedRecording?.isProcessing || false}
             audioUrl={selectedRecording?.audioUrl}
             onReprocess={selectedRecordingId ? handleReprocessRecording : undefined}
+            includePhonetics={includePhonetics}
+            onTogglePhonetics={() => setIncludePhonetics(!includePhonetics)}
+            onStartProcessing={selectedRecordingId && selectedRecording?.response.status === 'uploaded' ? handleStartProcessing : undefined}
           />
         </div>
       </div>

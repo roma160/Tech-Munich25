@@ -17,6 +17,10 @@ const nextConfig = {
         destination: 'http://localhost:8000/reprocess/:path*',
       },
       {
+        source: '/api/start-processing/:path*',
+        destination: 'http://localhost:8000/start-processing/:path*',
+      },
+      {
         source: '/api/use-sample',
         destination: 'http://localhost:8000/use-sample',
       },

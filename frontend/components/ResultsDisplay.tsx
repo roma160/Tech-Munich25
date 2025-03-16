@@ -6,13 +6,19 @@ interface ResultsDisplayProps {
   isLoading: boolean;
   audioUrl?: string | null;
   onReprocess?: () => void;
+  includePhonetics?: boolean;
+  onTogglePhonetics?: () => void;
+  onStartProcessing?: () => void;
 }
 
 const ResultsDisplay: React.FC<ResultsDisplayProps> = ({ 
   results, 
   isLoading, 
   audioUrl,
-  onReprocess
+  onReprocess,
+  includePhonetics = false,
+  onTogglePhonetics,
+  onStartProcessing
 }) => {
   // State for toggleable sections
   const [showFullPhonetics, setShowFullPhonetics] = useState(false);
@@ -42,6 +48,49 @@ const ResultsDisplay: React.FC<ResultsDisplayProps> = ({
             Try Reprocessing
           </button>
         )}
+      </div>
+    );
+  }
+
+  // Handle uploaded but not processed status
+  if (status === 'uploaded') {
+    return (
+      <div className="card">
+        <h2 className="text-xl font-semibold mb-4">Ready for Processing</h2>
+        
+        {/* Audio playback if available */}
+        {audioUrl && (
+          <div className="mb-6">
+            <h3 className="font-semibold text-lg mb-2">Audio Recording</h3>
+            <audio controls src={audioUrl} className="w-full" />
+          </div>
+        )}
+        
+        <div className="mb-6 flex justify-between items-center">
+          <button 
+            onClick={onStartProcessing}
+            className="btn bg-green-500 hover:bg-green-600 text-white"
+          >
+            Start Processing
+          </button>
+          
+          {onTogglePhonetics && (
+            <div className="flex items-center">
+              <input
+                type="checkbox"
+                id="includePhonetics"
+                className="mr-2"
+                checked={includePhonetics}
+                onChange={onTogglePhonetics}
+              />
+              <label htmlFor="includePhonetics" className="text-sm text-gray-700">
+                Include phonetics in analysis
+              </label>
+            </div>
+          )}
+        </div>
+        
+        <p className="text-gray-500">Click "Start Processing" to analyze this audio recording.</p>
       </div>
     );
   }
@@ -159,30 +208,49 @@ const ResultsDisplay: React.FC<ResultsDisplayProps> = ({
     // Combine all error types that have ranges
     const allErrors = [
       ...(results.result.mistral.mistakes || []).filter((err: any) => err.found_range && err.ranges),
-      ...(results.result.mistral.inaccuracies || []).filter((err: any) => err.found_range && err.ranges)
+      ...(results.result.mistral.inaccuracies || []).filter((err: any) => err.found_range && err.ranges),
+      ...(results.result.mistral.phonetics || []).filter((err: any) => err.found_range && err.range)
     ];
 
     // No errors with ranges
     if (!allErrors.length) return text;
 
     // Find errors that apply to this segment
-    const segmentErrors = allErrors.filter((err: any) => 
-      err.ranges.some((range: any) => range[0] === speakerSegmentIndex)
-    );
+    const segmentErrors = allErrors.filter((err: any) => {
+      if (err.ranges) {
+        return err.ranges.some((range: any) => range[0] === speakerSegmentIndex);
+      } else if (err.range) {
+        return err.range[0] === speakerSegmentIndex;
+      }
+      return false;
+    });
 
     if (!segmentErrors.length) return text;
     
     // Sort errors by their position in text (start index)
-    const sortedErrors = segmentErrors.flatMap((err: any) => 
-      err.ranges
-        .filter((range: any) => range[0] === speakerSegmentIndex)
-        .map((range: any) => ({
-          start: range[1],
-          end: range[2],
-          type: err.error_type,
-          correction: err.correction
-        }))
-    ).sort((a, b) => a.start - b.start);
+    const sortedErrors = segmentErrors.flatMap((err: any) => {
+      if (err.ranges) {
+        return err.ranges
+          .filter((range: any) => range[0] === speakerSegmentIndex)
+          .map((range: any) => ({
+            start: range[1],
+            end: range[2],
+            type: err.error_type || 'phonetic',
+            correction: err.correction || err.suggested_pronunciation,
+            tooltip: err.phonetic_issue ? `${err.phonetic_issue}: ${err.suggested_pronunciation}` : 
+                     `${err.error_type}: ${err.correction}`
+          }));
+      } else if (err.range && err.range[0] === speakerSegmentIndex) {
+        return [{
+          start: err.range[1],
+          end: err.range[2],
+          type: 'phonetic',
+          correction: err.suggested_pronunciation,
+          tooltip: `${err.phonetic_issue}: ${err.suggested_pronunciation}`
+        }];
+      }
+      return [];
+    }).sort((a, b) => a.start - b.start);
 
     // Replace text parts with highlighted versions
     let resultHtml = '';
@@ -194,12 +262,13 @@ const ResultsDisplay: React.FC<ResultsDisplayProps> = ({
       
       // Add the highlighted error
       const errorText = text.substring(error.start, error.end);
-      const errorClass = error.type.includes('grammatical') ? 'text-red-600 font-bold underline' :
+      const errorClass = error.type === 'phonetic' ? 'text-purple-600 font-bold underline' :
+                       error.type.includes('grammatical') ? 'text-red-600 font-bold underline' :
                        error.type.includes('stylistic') ? 'text-yellow-600 font-bold underline' :
                        'text-orange-600 font-bold underline';
-                       
+      
       // Create a tooltip with error details                 
-      const tooltip = `${error.type}: "${errorText}" → "${error.correction}"`;
+      const tooltip = error.tooltip || `${error.type}: "${errorText}" → "${error.correction}"`;
       
       resultHtml += `<span class="${errorClass}" title="${tooltip}">${errorText}</span>`;
       
@@ -241,13 +310,28 @@ const ResultsDisplay: React.FC<ResultsDisplayProps> = ({
       
       {/* Show reprocess button for completed items */}
       {status === 'complete' && onReprocess && (
-        <div className="mb-6">
+        <div className="mb-6 flex justify-between items-center">
           <button 
             onClick={onReprocess}
             className="btn bg-blue-500 hover:bg-blue-600 text-white"
           >
             Reprocess Audio
           </button>
+          
+          {onTogglePhonetics && (
+            <div className="flex items-center">
+              <input
+                type="checkbox"
+                id="includePhonetics"
+                className="mr-2"
+                checked={includePhonetics}
+                onChange={onTogglePhonetics}
+              />
+              <label htmlFor="includePhonetics" className="text-sm text-gray-700">
+                Include phonetics in analysis
+              </label>
+            </div>
+          )}
         </div>
       )}
       
@@ -428,6 +512,48 @@ const ResultsDisplay: React.FC<ResultsDisplayProps> = ({
                       <p className="text-gray-600">No vocabulary suggestions available</p>
                     )}
                   </div>
+                  
+                  {/* Phonetics section */}
+                  {Array.isArray(result.mistral.phonetics) && result.mistral.phonetics.length > 0 && (
+                    <div className="p-4 bg-purple-50 rounded-lg">
+                      <h4 className="font-medium text-purple-800 mb-2">Pronunciation Feedback</h4>
+                      <ul className="list-disc pl-5 space-y-2">
+                        {result.mistral.phonetics.map((item: any, idx: number) => (
+                          <li key={idx} className="text-purple-700">
+                            {item.found_range ? (
+                              <div>
+                                <div>
+                                  <span className="font-bold text-purple-800">{item.quote}</span>
+                                </div>
+                                <div className="text-sm text-purple-600 mt-1">
+                                  <span className="font-medium">Issue: </span>
+                                  {item.phonetic_issue}
+                                </div>
+                                <div className="text-sm text-blue-600 mt-1">
+                                  <span className="font-medium">Suggestion: </span>
+                                  {item.suggested_pronunciation}
+                                </div>
+                              </div>
+                            ) : (
+                              <div>
+                                <div>
+                                  <span className="font-medium">{item.quote}</span>
+                                </div>
+                                <div className="text-sm text-purple-600 mt-1">
+                                  <span className="font-medium">Issue: </span>
+                                  {item.phonetic_issue}
+                                </div>
+                                <div className="text-sm text-blue-600 mt-1">
+                                  <span className="font-medium">Suggestion: </span>
+                                  {item.suggested_pronunciation}
+                                </div>
+                              </div>
+                            )}
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
                 </>
               )}
             </div>

@@ -3,7 +3,7 @@ import os
 import uuid
 import json
 from datetime import datetime
-from fastapi import FastAPI, UploadFile, HTTPException, BackgroundTasks, File
+from fastapi import FastAPI, UploadFile, HTTPException, BackgroundTasks, File, Body, Form
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse
 import uvicorn
@@ -49,7 +49,7 @@ allosaurus_service = AllosaurusService()
 
 
 # Process WAV file
-async def process_wav_file(process_id: str, file_path: str):
+async def process_wav_file(process_id: str, file_path: str, includePhonetics: bool = False):
     try:
         # Update status to ElevenLabs processing
         active_processes[process_id].status = ProcessStatus.ELEVENLABS_PROCESSING
@@ -113,7 +113,13 @@ async def process_wav_file(process_id: str, file_path: str):
         
         try:
             # Step 2: Send to Mistral for language feedback and summary
-            mistral_result = await mistral_service.process_transcript(elevenlabs_result, elevenlabs_segments)
+            mistral_result = await mistral_service.process_transcript(
+                elevenlabs_result, 
+                elevenlabs_segments, 
+                include_phonetics=includePhonetics,
+                phonetics_data=partial_results.get("allosaurus", None) if includePhonetics else None
+            )
+            
             summary = await mistral_service.summarize_conversation(elevenlabs_result)
             
             partial_results["mistral"] = mistral_result
@@ -150,13 +156,14 @@ async def process_wav_file(process_id: str, file_path: str):
         pass
 
 @app.post("/upload", response_model=ProcessInfo, summary="Upload a WAV file for processing")
-async def upload_file(background_tasks: BackgroundTasks, file: UploadFile = File(...)):
+async def upload_file(
+    file: UploadFile = File(...)
+):
     """
-    Upload a WAV file for processing.
+    Upload a WAV file without starting processing.
     
-    The file will be processed in two steps:
-    1. Speech-to-text conversion with ElevenLabs
-    2. Text processing with Mistral
+    This endpoint only uploads and saves the file, creating a process record.
+    To start processing, call the /start-processing/{process_id} endpoint.
     
     Returns a process ID that can be used to check the status of the processing.
     """
@@ -173,19 +180,48 @@ async def upload_file(background_tasks: BackgroundTasks, file: UploadFile = File
     with open(temp_file_path, "wb") as f:
         f.write(await file.read())
     
-    # Initialize process info
+    # Initialize process info but set status as UPLOADED (not PENDING)
     process_info = ProcessInfo(
         id=process_id,
-        status=ProcessStatus.PENDING,
+        status="uploaded",  # Custom status for files not yet processed
         created_at=datetime.now().isoformat(),
         updated_at=datetime.now().isoformat()
     )
     active_processes[process_id] = process_info
     
-    # Start processing in background
-    background_tasks.add_task(process_wav_file, process_id, temp_file_path)
-    
     return process_info
+
+@app.post("/start-processing/{process_id}", response_model=ProcessInfo, summary="Start processing an uploaded file")
+async def start_processing(
+    process_id: str,
+    background_tasks: BackgroundTasks,
+    includePhonetics: bool = Form(False, description="Whether to include phonetics data in analysis")
+):
+    """
+    Start processing a previously uploaded file identified by process_id.
+    
+    Returns the updated process ID info with status set to PENDING.
+    
+    - **includePhonetics**: If True, phonetics data will be included in the analysis for improved pronunciation feedback
+    """
+    if process_id not in active_processes:
+        raise HTTPException(status_code=404, detail="Process not found")
+    
+    # Find the temp file
+    temp_file_path = f"temp_{process_id}.wav"
+    
+    # Check if the file exists
+    if not os.path.exists(temp_file_path):
+        raise HTTPException(status_code=404, detail="Audio file not found")
+    
+    # Update process status to PENDING
+    active_processes[process_id].status = ProcessStatus.PENDING
+    active_processes[process_id].updated_at = datetime.now().isoformat()
+    
+    # Start processing in background
+    background_tasks.add_task(process_wav_file, process_id, temp_file_path, includePhonetics)
+    
+    return active_processes[process_id]
 
 @app.get("/status/{process_id}", response_model=None, summary="Check the status of a process")
 async def check_status(process_id: str):
@@ -263,12 +299,18 @@ async def check_status(process_id: str):
         return safe_result
 
 @app.post("/reprocess/{process_id}", response_model=ProcessInfo, summary="Reprocess an existing audio file")
-async def reprocess_audio(process_id: str, background_tasks: BackgroundTasks):
+async def reprocess_audio(
+    process_id: str, 
+    background_tasks: BackgroundTasks, 
+    includePhonetics: bool = Form(False, description="Whether to include phonetics data in analysis")
+):
     """
     Reprocess an existing audio file by its process ID.
     
     This will create a new process with a new ID that reprocesses the same audio file.
     Returns a new process ID that can be used to check the status of the processing.
+    
+    - **includePhonetics**: If True, phonetics data will be included in the analysis for improved pronunciation feedback
     """
     if process_id not in active_processes:
         raise HTTPException(status_code=404, detail="Original process not found")
@@ -302,47 +344,32 @@ async def reprocess_audio(process_id: str, background_tasks: BackgroundTasks):
     active_processes[new_process_id] = new_process_info
     
     # Start processing in background
-    background_tasks.add_task(process_wav_file, new_process_id, new_temp_file_path)
+    background_tasks.add_task(process_wav_file, new_process_id, new_temp_file_path, includePhonetics)
     
     return new_process_info
 
 @app.post("/use-sample", response_model=ProcessInfo, summary="Use the sample.wav file for processing")
-async def use_sample(background_tasks: BackgroundTasks):
+async def use_sample(
+    background_tasks: BackgroundTasks,
+    includePhonetics: bool = Form(False, description="Whether to include phonetics data in analysis")
+):
     """
     Process the sample.wav file that's included with the backend.
     
     This creates a new processing job for the sample audio file.
     Returns a process ID that can be used to check the status of the processing.
+    
+    - **includePhonetics**: If True, phonetics data will be included in the analysis for improved pronunciation feedback
     """
     # Check if sample file exists - use absolute path
     current_dir = os.path.dirname(os.path.abspath(__file__))
     sample_file_path = os.path.join(current_dir, "sample.wav")
     
     if not os.path.exists(sample_file_path):
-        # Try alternative locations
-        alt_paths = [
-            "sample.wav",  # Current working directory
-            os.path.join(current_dir, "..", "sample.wav"),  # Parent directory
-        ]
-        
-        for path in alt_paths:
-            if os.path.exists(path):
-                sample_file_path = path
-                break
-        else:
-            raise HTTPException(status_code=404, detail=f"Sample audio file not found. Tried: {sample_file_path} and alternatives")
+        raise HTTPException(status_code=404, detail="Sample audio file not found")
     
     # Generate a unique ID for this process
     process_id = str(uuid.uuid4())
-    
-    # Create a copy of the sample file with the process ID
-    temp_file_path = f"temp_{process_id}.wav"
-    try:
-        with open(sample_file_path, "rb") as src_file:
-            with open(temp_file_path, "wb") as dst_file:
-                dst_file.write(src_file.read())
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Error copying sample file: {str(e)}")
     
     # Initialize process info
     process_info = ProcessInfo(
@@ -354,7 +381,7 @@ async def use_sample(background_tasks: BackgroundTasks):
     active_processes[process_id] = process_info
     
     # Start processing in background
-    background_tasks.add_task(process_wav_file, process_id, temp_file_path)
+    background_tasks.add_task(process_wav_file, process_id, sample_file_path, includePhonetics)
     
     return process_info
 

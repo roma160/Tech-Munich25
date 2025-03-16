@@ -17,6 +17,7 @@ class ProcessStatus(str, Enum):
     MISTRAL_PROCESSING = "mistral_processing"
     COMPLETE = "complete"
     FAILED = "failed"
+    UPLOADED = "uploaded"
 
 class ProcessInfo(BaseModel):
     """
