@@ -3,20 +3,20 @@ Mistral API service implementation with OpenAI fallback.
 """
 import asyncio
 import json
-<<<<<<< Updated upstream
-
 import logging
 
 from typing import Dict, Any, Tuple, Optional
 from openai import AsyncOpenAI
-=======
-from typing import Dict, Any, Optional
-# from openai import OpenAI  # Commented out OpenAI import
 from mistralai.client import MistralClient
->>>>>>> Stashed changes
 from models.elevenlabs import ElevenLabsOutput
-from models.language_feedback import EvaluationResponse, EvaluationResponseRanged
-from models.language_feedback import ErrorItem, ErrorItemRanged, VocabItem, VocabItemRanged
+from models.language_feedback import (
+    EvaluationResponse,
+    EvaluationResponseRanged,
+    ErrorItem,
+    ErrorItemRanged,
+    VocabItem,
+    VocabItemRanged
+)
 
 PROMPT_PREFIX = """
 Du bist ein sprachlicher Evaluierungsassistent, der dafür zuständig ist, transkribierte Audioaufnahmen (auf Deutsch) auf sprachliche Fehler und stilistische Verbesserungsmöglichkeiten zu untersuchen. Deine Aufgabe besteht darin, typische Fehler von Deutschlernenden zu erkennen und konstruktives Feedback zu geben.
@@ -151,25 +151,52 @@ Für jeden identifizierten Fehler sollst du ein JSON-Objekt mit folgendem Format
 
 logger = logging.getLogger(__name__)
 
-<<<<<<< Updated upstream
 class LanguageFeedbackService:
-    def __init__(self):
-        self.client = AsyncOpenAI()
+    def __init__(self, use_mistral: bool = True, api_key: Optional[str] = None):
+        """Initialize the service with either Mistral or OpenAI client.
+        
+        Args:
+            use_mistral: If True, use Mistral AI API, otherwise use OpenAI
+            api_key: Optional API key. If not provided, will look for MISTRAL_API_KEY or OPENAI_API_KEY in environment
+        """
+        self.use_mistral = use_mistral
+        if use_mistral:
+            self.client = MistralClient(api_key=api_key)
+        else:
+            self.client = AsyncOpenAI(api_key=api_key)
     
     async def process_transcript(self, transcript: ElevenLabsOutput) -> EvaluationResponseRanged:
         transcript_text = transcript.extract_text()
-        completion = await self.client.beta.chat.completions.parse(
-            model="o1-2024-12-17",
-            messages=[
+        
+        if self.use_mistral:
+            # Mistral AI implementation
+            messages = [
                 {"role": "system", "content": PROMPT_PREFIX},
                 {"role": "user", "content": transcript_text}
-            ],
-            response_format=EvaluationResponse,
-        )
-
-        result = completion.choices[0].message.content
-        assert result is not None
-        eval_response = EvaluationResponse(**json.loads(result))
+            ]
+            
+            completion = self.client.chat(
+                model="mistral-large-latest",  # You can adjust the model as needed
+                messages=messages,
+                response_format={"type": "json_object"}  # Ensure JSON response
+            )
+            
+            result = completion.choices[0].message.content
+            eval_response = EvaluationResponse(**json.loads(result))
+        else:
+            # OpenAI implementation
+            completion = await self.client.beta.chat.completions.parse(
+                model="o1-2024-12-17",
+                messages=[
+                    {"role": "system", "content": PROMPT_PREFIX},
+                    {"role": "user", "content": transcript_text}
+                ],
+                response_format=EvaluationResponse,
+            )
+            
+            result = completion.choices[0].message.content
+            assert result is not None
+            eval_response = EvaluationResponse(**json.loads(result))
 
         return LanguageFeedbackService.__convert_to_ranges(eval_response, transcript_text)
     
@@ -242,51 +269,4 @@ class LanguageFeedbackService:
             vocabularies=vocabularies
         )
 
-=======
     
-class LanguageFeedbackService:
-    def __init__(self, use_mistral: bool = True, api_key: Optional[str] = None):
-        """Initialize the service with either Mistral or OpenAI client.
-        
-        Args:
-            use_mistral: If True, use Mistral AI API, otherwise use OpenAI
-            api_key: Optional API key. If not provided, will look for MISTRAL_API_KEY or OPENAI_API_KEY in environment
-        """
-        self.use_mistral = use_mistral
-        if use_mistral:
-            self.client = MistralClient(api_key=api_key)
-        # else:
-        #     self.client = OpenAI(api_key=api_key)  # Commented out OpenAI client
-   
-    async def process_transcript(self, transcript: ElevenLabsOutput) -> EvaluationResponse:
-        transcript_text = transcript.extract_text()
-        
-        if self.use_mistral:
-            # Mistral AI implementation
-            messages = [
-                {"role": "system", "content": PROMPT_PREFIX},
-                {"role": "user", "content": transcript_text}
-            ]
-            
-            completion = self.client.chat(
-                model="mistral-large-latest",  # You can adjust the model as needed
-                messages=messages,
-                response_format={"type": "json_object"}  # Ensure JSON response
-            )
-            
-            result = completion.choices[0].message.content
-            return EvaluationResponse(**json.loads(result))
-        
-        # else:
-        #     # OpenAI implementation (commented out)
-        #     completion = self.client.beta.chat.completions.parse(
-        #         model="o1-2024-12-17",
-        #         messages=[
-        #             {"role": "system", "content": PROMPT_PREFIX},
-        #             {"role": "user", "content": transcript_text}
-        #         ],
-        #         response_format=EvaluationResponse,
-        #     )
-        #     result = completion.choices[0].message.content
-        #     return EvaluationResponse(**json.loads(result))
->>>>>>> Stashed changes
