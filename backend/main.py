@@ -10,6 +10,7 @@ from models.process import ProcessStatus, ProcessInfo
 
 from services.elevenlabs import ElevenLabsService
 from services.language_feedback import LanguageFeedbackService
+from services.allosaurus_service import AllosaurusService
 
 from utils import get_root_folder
 
@@ -40,6 +41,7 @@ active_processes = {}
 # Singleton instances
 mistral_service = LanguageFeedbackService() 
 elevenlabs_service = ElevenLabsService() 
+allosaurus_service = AllosaurusService()
 
 
 # Process WAV file
@@ -51,6 +53,9 @@ async def process_wav_file(process_id: str, file_path: str):
         
         # Step 1: Send to ElevenLabs for speech-to-text
         elevenlabs_result = await elevenlabs_service.speech_to_text(file_path)
+        
+        # Step 1.5: Process with Allosaurus for phoneme recognition
+        allosaurus_result = await allosaurus_service.recognize_phonemes(file_path)
         
         # Step 2: Send to Mistral
         active_processes[process_id].status = ProcessStatus.MISTRAL_PROCESSING
@@ -67,7 +72,8 @@ async def process_wav_file(process_id: str, file_path: str):
         active_processes[process_id].result = {
             "elevenlabs": elevenlabs_segments,
             "mistral": mistral_result,
-            "summary": summary
+            "summary": summary,
+            "allosaurus": allosaurus_result
         }
         
     except Exception as e:

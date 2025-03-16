@@ -1,3 +1,6 @@
 **/.venv
 .env
 .DS_Store
+frontend/app/page.tsx
+frontend/.next/*
+frontend/node_modules/*

@@ -12,6 +12,8 @@ class ProcessStatus(str, Enum):
     PENDING = "pending"
     ELEVENLABS_PROCESSING = "elevenlabs_processing"
     ELEVENLABS_COMPLETE = "elevenlabs_complete"
+    ALLOSAURUS_PROCESSING = "allosaurus_processing"
+    ALLOSAURUS_COMPLETE = "allosaurus_complete"
     MISTRAL_PROCESSING = "mistral_processing"
     COMPLETE = "complete"
     FAILED = "failed"
