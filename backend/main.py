@@ -64,6 +64,7 @@ async def process_wav_file(process_id: str, file_path: str):
         # Extract text from ElevenLabs result and send to Mistral
         elevenlabs_segments = elevenlabs_result.extract_segments()
         mistral_result = await mistral_service.process_transcript(elevenlabs_result, elevenlabs_segments)
+        summary = await mistral_service.summarize_conversation(elevenlabs_result)
         logger.warning(f"Finished processing file at {datetime.now().isoformat()}")
         
         # Update process with final result
@@ -71,7 +72,8 @@ async def process_wav_file(process_id: str, file_path: str):
         active_processes[process_id].updated_at = datetime.now().isoformat()
         active_processes[process_id].result = {
             "elevenlabs": elevenlabs_segments,
-            "mistral": mistral_result
+            "mistral": mistral_result,
+            "summary": summary
         }
         
     except Exception as e:

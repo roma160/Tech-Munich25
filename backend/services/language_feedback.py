@@ -147,6 +147,11 @@ Für jeden identifizierten Fehler sollst du ein JSON-Objekt mit folgendem Format
 4. Liefere NUR valides JSON ohne zusätzlichen Text oder Erklärungen.
 
 5. Stelle sicher, dass jede "quote" ausreichend Kontext enthält, um die genaue Position im Text eindeutig zu identifizieren. Bei längeren Fehlern sollte der gesamte relevante Satz oder Teilsatz zitiert werden.
+
+6. Falls du keine Fehler, Unstimmigkeiten oder Vokabelempfehlungen identifizieren kannst, gib für die entsprechende Kategorie ein leeres Array zurück. Beispiel:
+   - Wenn keine Fehler gefunden wurden: "mistakes": []
+   - Wenn keine Unstimmigkeiten gefunden wurden: "inaccuracies": []
+   - Wenn keine Vokabelempfehlungen gegeben werden können: "vocabularies": []
 """
 
 logger = logging.getLogger(__name__)
@@ -176,15 +181,14 @@ class LanguageFeedbackService:
             ]
             
             completion = self.client.chat(
-                model="mistral-large-latest",  # You can adjust the model as needed
+                model="mistral-large-latest",
                 messages=messages,
-                response_format={"type": "json_object"}  # Ensure JSON response
+                response_format={"type": "json_object"} 
             )
             
             result = completion.choices[0].message.content
             eval_response = EvaluationResponse(**json.loads(result))
         else:
-            # OpenAI implementation
             completion = await self.client.beta.chat.completions.parse(
                 model="o1-2024-12-17",
                 messages=[
@@ -199,6 +203,23 @@ class LanguageFeedbackService:
             eval_response = EvaluationResponse(**json.loads(result))
 
         return LanguageFeedbackService.__convert_to_ranges(eval_response, elevenlabs_segments)
+    
+
+    async def summarize_conversation(self, transcript: ElevenLabsOutput) -> str:
+        transcript_text = transcript.extract_text()
+        messages = [
+            {"role": "system", "content": "Du bist ein Sprachcoach, der eine Konversation zwischen zwei Personen zusammenfasst. Fasse die Konversation in maximal zwei Sätzen zusammen und gib nur den Text zurück."},
+            {"role": "user", "content": transcript_text}
+        ]
+        
+        completion = self.client.chat(
+            model="mistral-large-latest",  
+            messages=messages,
+            response_format={"type": "text"}
+        )
+        result = completion.choices[0].message.content
+        return result
+
     
     @staticmethod
     def __find_substring_range(full_string: str, substring: str, start_from: int = 0) -> Optional[Tuple[int, int]]:
