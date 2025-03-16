@@ -19,9 +19,11 @@ class ElevenLabsOutput(BaseModel):
     def extract_text(self) -> str:
         sequences =  self._extract_speaker_sequences()
         conversation_text = "\n".join(
-            f"{sequence['speaker_id']}: {sequence['content']}"
+            sequence['content']
             for sequence in sequences
+            if sequence['speaker_id'] == 'speaker_0'
         )
+        # TODO: This is hardcoded
         return conversation_text
 
     
