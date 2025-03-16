@@ -7,7 +7,7 @@ import json
 import logging
 
 from typing import Dict, Any, Tuple, Optional
-from openai import OpenAI
+from openai import AsyncOpenAI
 from models.elevenlabs import ElevenLabsOutput
 from models.language_feedback import EvaluationResponse, EvaluationResponseRanged
 from models.language_feedback import ErrorItem, ErrorItemRanged, VocabItem, VocabItemRanged
@@ -124,11 +124,11 @@ logger = logging.getLogger(__name__)
 
 class LanguageFeedbackService:
     def __init__(self):
-        self.client = OpenAI()
+        self.client = AsyncOpenAI()
     
     async def process_transcript(self, transcript: ElevenLabsOutput) -> EvaluationResponseRanged:
         transcript_text = transcript.extract_text()
-        completion = self.client.beta.chat.completions.parse(
+        completion = await self.client.beta.chat.completions.parse(
             model="o1-2024-12-17",
             messages=[
                 {"role": "system", "content": PROMPT_PREFIX},
