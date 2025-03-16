@@ -6,7 +6,7 @@ class Word(BaseModel):
     text: str
     start: float
     end: float
-    type: Literal["word", "spacing"]
+    type: Literal["word", "spacing", "audio_event"]
     speaker_id: str
 
 

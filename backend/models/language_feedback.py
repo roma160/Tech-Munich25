@@ -1,12 +1,16 @@
 from pydantic import BaseModel
 from typing import List
 
-class ErrorCorrection(BaseModel):
+class ErrorItem(BaseModel):
     quote: str
     error_type: str
     correction: str
 
-class LanguageFeedback(BaseModel):
-    high: List[ErrorCorrection] = []
-    mid: List[ErrorCorrection] = []
-    low: List[ErrorCorrection] = []
+class VocabItem(BaseModel):
+    quote: str
+    synonyms: List[str]
+
+class EvaluationResponse(BaseModel):
+    mistakes: List[ErrorItem]
+    inaccuracies: List[ErrorItem]
+    vocabularies: List[VocabItem]
