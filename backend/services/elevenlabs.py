@@ -6,6 +6,9 @@ import aiohttp
 import asyncio
 from typing import Optional
 from models.elevenlabs import ElevenLabsOutput
+import logging
+
+logger = logging.getLogger(__name__)
 
 class ElevenLabsService:
     """
@@ -66,4 +69,5 @@ class ElevenLabsService:
                 data=data
             ) as response:
                 response_json = await response.json()
+                logger.warning(response_json)
                 return ElevenLabsOutput.from_response(response_json)

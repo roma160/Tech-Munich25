@@ -57,6 +57,15 @@ class ElevenLabsOutput(BaseModel):
         # Fallback to reconstructing from words
         return " ".join(word.text for word in self.words if word.type == "word")
     
+    def extract_speaker0_text(self) -> str:
+        sequences =  self._extract_speaker_sequences()
+        conversation_text = "\n".join(
+            sequence['content']
+            for sequence in sequences
+            if sequence['speaker_id'] == 'speaker_0'
+        )
+        return conversation_text
+
     def extract_segments(self) -> List[str]:
         """
         Extract segments of text by speaker.

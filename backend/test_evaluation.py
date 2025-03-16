@@ -2,7 +2,7 @@ import requests
 import time 
 import json 
 
-with open("/Users/m.mohammed/Downloads/hackathons/tech-berlin-munich/Tech-Munich25/backend/temp_e332ee30-b75c-4a7a-a7e9-1c434bd2b743.wav", "rb") as file:
+with open("./sample_roman.wav", "rb") as file:
     r = requests.post("http://localhost:8000/upload", files={"file": file})
 
 response_json = r.json()

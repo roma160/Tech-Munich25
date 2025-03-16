@@ -5,12 +5,14 @@ from datetime import datetime
 from fastapi import FastAPI, UploadFile, HTTPException, BackgroundTasks, File
 from fastapi.middleware.cors import CORSMiddleware
 import uvicorn
+from pydub import AudioSegment
 
 from models.process import ProcessStatus, ProcessInfo
 
 from services.elevenlabs import ElevenLabsService
 from services.language_feedback import LanguageFeedbackService
 from services.allosaurus_service import AllosaurusService
+from services.phonemizer_service import PhonemizerService
 
 from utils import get_root_folder
 
@@ -42,7 +44,40 @@ active_processes = {}
 mistral_service = LanguageFeedbackService() 
 elevenlabs_service = ElevenLabsService() 
 allosaurus_service = AllosaurusService()
+phenomizer_service = PhonemizerService()
 
+def lcs(X, Y):
+    m = len(X)
+    n = len(Y)
+    L = [[0] * (n + 1) for i in range(m + 1)]
+    
+    for i in range(m + 1):
+        for j in range(n + 1):
+            if i == 0 or j == 0:
+                L[i][j] = 0
+            elif X[i - 1] == Y[j - 1]:
+                L[i][j] = L[i - 1][j - 1] + 1
+            else:
+                L[i][j] = max(L[i - 1][j], L[i][j - 1])
+    
+    index = L[m][n]
+    lcs_str = [""] * (index + 1)
+    lcs_str[index] = ""
+    
+    i = m
+    j = n
+    while i > 0 and j > 0:
+        if X[i - 1] == Y[j - 1]:
+            lcs_str[index - 1] = X[i - 1]
+            i -= 1
+            j -= 1
+            index -= 1
+        elif L[i - 1][j] > L[i][j - 1]:
+            i -= 1
+        else:
+            j -= 1
+    
+    return "".join(lcs_str)
 
 # Process WAV file
 async def process_wav_file(process_id: str, file_path: str):
@@ -53,9 +88,61 @@ async def process_wav_file(process_id: str, file_path: str):
         
         # Step 1: Send to ElevenLabs for speech-to-text
         elevenlabs_result = await elevenlabs_service.speech_to_text(file_path)
+
+
+        # Construct segmented audio of just speaker_0
+        speaker_0_segments = [segment for segment in elevenlabs_result.words if segment.speaker_id == "speaker_0"]
+        speaker_0_audio_path = f"temp_{process_id}_speaker_0.wav"
+        
+        # Load the original audio file
+        original_audio = AudioSegment.from_file(file_path)
+        
+        # Create an empty audio segment for speaker_0
+        speaker_0_audio = AudioSegment.empty()
+        
+        # Iterate over the segments and extract the parts belonging to speaker_0
+        for segment in speaker_0_segments:
+            start_time = segment.start * 1000  # Convert to milliseconds
+            end_time = segment.end * 1000  # Convert to milliseconds
+            speaker_0_audio += original_audio[start_time:end_time]
+        
+        # Export the constructed audio to a new file
+        speaker_0_audio.export(speaker_0_audio_path, format="wav")
+
+
         
         # Step 1.5: Process with Allosaurus for phoneme recognition
-        allosaurus_result = await allosaurus_service.recognize_phonemes(file_path)
+        allosaurus_result: str = await allosaurus_service.recognize_phonemes(speaker_0_audio_path)
+
+        phonemizer_result = [
+            await phenomizer_service.phonemize_string(word.text)
+            for word in elevenlabs_result.words
+            if word.speaker_id == "speaker_0"
+        ]
+
+        # Use hard-coded longest common subsequence to compare the two phoneme strings
+        lcs_result = lcs(allosaurus_result, "".join(phonemizer_result))
+
+        lcs_pieces = [""] * len(phonemizer_result)
+        lcs_index = 0
+        allosaurus_pieces = [""] * len(phonemizer_result)
+        allosaurus_index = 0
+        for j, phoneme in enumerate(phonemizer_result):
+            i = 0
+            while i < len(phoneme) and lcs_index < len(lcs_result):
+                if phoneme[i] == lcs_result[lcs_index]:
+                    while allosaurus_result[allosaurus_index] != lcs_result[lcs_index]:
+                        allosaurus_pieces[j] += allosaurus_result[allosaurus_index]
+                        allosaurus_index += 1
+                    
+                    allosaurus_pieces[j] += allosaurus_result[allosaurus_index]
+                    allosaurus_index += 1
+
+                    lcs_pieces[lcs_index] += phoneme[i]
+                    lcs_index += 1
+                i += 1
+        
+        phonetic_correction = [*zip(allosaurus_pieces, lcs_pieces)]
         
         # Step 2: Send to Mistral
         active_processes[process_id].status = ProcessStatus.MISTRAL_PROCESSING
@@ -73,7 +160,7 @@ async def process_wav_file(process_id: str, file_path: str):
             "elevenlabs": elevenlabs_segments,
             "mistral": mistral_result,
             "summary": summary,
-            "allosaurus": allosaurus_result
+            "phonetic_correction": phonetic_correction
         }
         
     except Exception as e:
@@ -106,7 +193,7 @@ async def upload_file(background_tasks: BackgroundTasks, file: UploadFile = File
     process_id = str(uuid.uuid4())
     
     # Create temporary file path
-    temp_file_path = f"temp_{process_id}.wav"
+    temp_file_path = str(get_root_folder() / f"backend/temp_{process_id}.wav")
     
     # Save uploaded file
     with open(temp_file_path, "wb") as f:
