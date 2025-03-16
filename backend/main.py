@@ -57,13 +57,14 @@ async def process_wav_file(process_id: str, file_path: str):
         active_processes[process_id].updated_at = datetime.now().isoformat()
         
         # Extract text from ElevenLabs result and send to Mistral
-        mistral_result = await mistral_service.process_transcript(elevenlabs_result)
+        elevenlabs_segments = elevenlabs_result.extract_segments()
+        mistral_result = await mistral_service.process_transcript(elevenlabs_result, elevenlabs_segments)
         
         # Update process with final result
         active_processes[process_id].status = ProcessStatus.COMPLETE
         active_processes[process_id].updated_at = datetime.now().isoformat()
         active_processes[process_id].result = {
-            "elevenlabs": elevenlabs_result,
+            "elevenlabs": elevenlabs_segments,
             "mistral": mistral_result
         }
         

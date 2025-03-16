@@ -17,16 +17,15 @@ class EvaluationResponse(BaseModel):
 
 
 class ErrorItemRanged(BaseModel):
-    ranges: List[Tuple[int, int]]
+    ranges: List[Tuple[int, int, int]]
     error_type: str
     correction: str
 
 class VocabItemRanged(BaseModel):
-    range: Tuple[int, int]
+    range: Tuple[int, int, int]
     synonyms: List[str]
 
 class EvaluationResponseRanged(BaseModel):
-    transcript: str
     mistakes: List[ErrorItemRanged]
     inaccuracies: List[ErrorItemRanged]
     vocabularies: List[VocabItemRanged]

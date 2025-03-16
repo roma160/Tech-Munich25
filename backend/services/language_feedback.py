@@ -5,7 +5,7 @@ import asyncio
 import json
 import logging
 
-from typing import Dict, Any, Tuple, Optional
+from typing import Dict, Any, Tuple, Optional, List
 from openai import AsyncOpenAI
 from mistralai.client import MistralClient
 from models.elevenlabs import ElevenLabsOutput
@@ -165,7 +165,7 @@ class LanguageFeedbackService:
         else:
             self.client = AsyncOpenAI(api_key=api_key)
     
-    async def process_transcript(self, transcript: ElevenLabsOutput) -> EvaluationResponseRanged:
+    async def process_transcript(self, transcript: ElevenLabsOutput, elevenlabs_segments: List[str]) -> EvaluationResponseRanged:
         transcript_text = transcript.extract_text()
         
         if self.use_mistral:
@@ -198,7 +198,7 @@ class LanguageFeedbackService:
             assert result is not None
             eval_response = EvaluationResponse(**json.loads(result))
 
-        return LanguageFeedbackService.__convert_to_ranges(eval_response, transcript_text)
+        return LanguageFeedbackService.__convert_to_ranges(eval_response, elevenlabs_segments)
     
     @staticmethod
     def __find_substring_range(full_string: str, substring: str, start_from: int = 0) -> Optional[Tuple[int, int]]:
@@ -210,15 +210,22 @@ class LanguageFeedbackService:
             return None
     
     @staticmethod
-    def __convert_error_item_to_ranged(error_item: ErrorItem, transcript: str) -> Optional[ErrorItemRanged]:
+    def __convert_error_item_to_ranged(error_item: ErrorItem, elevenlabs_segments: List[str]) -> Optional[ErrorItemRanged]:
         ranges = []
-        last_idx = 0
-        while True:
-            idx = LanguageFeedbackService.__find_substring_range(transcript, error_item.quote, last_idx)
-            if idx is None:
-                break
-            ranges.append(idx)
-            last_idx = idx[1]
+
+        for i, segment in enumerate(elevenlabs_segments):
+            if i % 2 == 1:
+                continue
+            
+            last_idx = 0
+            while True:
+                idx = LanguageFeedbackService.__find_substring_range(
+                    segment, error_item.quote, last_idx
+                )
+                if idx is None:
+                    break
+                ranges.append((i, idx[0], idx[1]))
+                last_idx = idx[1]
         
         if not ranges:
             logger.warning(f"Could not find substring range for error item: {error_item}")
@@ -231,8 +238,19 @@ class LanguageFeedbackService:
         )
     
     @staticmethod
-    def __convert_vocab_item_to_ranged(vocab_item: VocabItem, transcript: str) -> Optional[VocabItemRanged]:
-        range = LanguageFeedbackService.__find_substring_range(transcript, vocab_item.quote)
+    def __convert_vocab_item_to_ranged(vocab_item: VocabItem, elevenlabs_segments: List[str]) -> Optional[VocabItemRanged]:
+        range = None
+        for i, segment in enumerate(elevenlabs_segments):
+            if i % 2 == 1:
+                continue
+
+            range = LanguageFeedbackService.__find_substring_range(
+                segment, vocab_item.quote
+            )
+            if range:
+                range = (i, range[0], range[1])
+                break
+
         if range is None:
             logger.warning(f"Could not find substring range for error item: {vocab_item}")
             return None
@@ -243,27 +261,29 @@ class LanguageFeedbackService:
         )
 
     @staticmethod
-    def __convert_to_ranges(response: EvaluationResponse, transcript: str) -> EvaluationResponseRanged:
+    def __convert_to_ranges(response: EvaluationResponse, elevenlabs_segments: List[str]) -> EvaluationResponseRanged:
         mistakes = []
         for error_item in response.mistakes:
-            ranged_error = LanguageFeedbackService.__convert_error_item_to_ranged(error_item, transcript)
+            ranged_error = LanguageFeedbackService.__convert_error_item_to_ranged(
+                error_item, elevenlabs_segments)
             if ranged_error:
                 mistakes.append(ranged_error)
         
         inaccuracies = []
         for error_item in response.inaccuracies:
-            ranged_error = LanguageFeedbackService.__convert_error_item_to_ranged(error_item, transcript)
+            ranged_error = LanguageFeedbackService.__convert_error_item_to_ranged(
+                error_item, elevenlabs_segments)
             if ranged_error:
                 inaccuracies.append(ranged_error)
 
         vocabularies = []
         for vocab_item in response.vocabularies:
-            ranged_vocab = LanguageFeedbackService.__convert_vocab_item_to_ranged(vocab_item, transcript)
+            ranged_vocab = LanguageFeedbackService.__convert_vocab_item_to_ranged(
+                vocab_item, elevenlabs_segments)
             if ranged_vocab:
                 vocabularies.append(ranged_vocab)
         
         return EvaluationResponseRanged(
-            transcript=transcript,
             mistakes=mistakes,
             inaccuracies=inaccuracies,
             vocabularies=vocabularies

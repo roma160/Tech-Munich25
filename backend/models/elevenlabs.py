@@ -25,7 +25,13 @@ class ElevenLabsOutput(BaseModel):
         )
         # TODO: This is hardcoded
         return conversation_text
-
+    
+    def extract_segments(self) -> List[str]:
+        return [
+            sequence['content']
+            for sequence in self._extract_speaker_sequences()
+            if sequence['speaker_id'] in ['speaker_0', 'speaker_1']
+        ]
     
     def _extract_speaker_sequences(self) -> List[Dict[str, str]]:
         sequences = []
