@@ -11,7 +11,7 @@ from models.language_feedback import LanguageFeedback
 
 PROMPT_PREFIX = f"""
 Below is an excerpt of a discussion (infer the tone and formality from it).
-Your goal as a coach is to check if speaker_1 did any mistakes. If so, classify all the mistakes of the same urgency (high, mid, low) together, and for each _quoted_ mistake, provide a _concise correction_. You should be pragmatic and actionable.
+Your goal as a coach is to check if the non-native german speaker did any mistakes. If so, classify all the mistakes of the same urgency (high, mid, low) together, and for each _quoted_ mistake, provide a _concise correction_. You should be pragmatic and actionable.
 Result should be in JSON format which has the following structure:
 ```
 {{
@@ -64,11 +64,12 @@ class LanguageFeedbackService:
         transcript_text = transcript.extract_text()
 
         completion = self.client.chat.completions.create(
-            model="o1",
+            model="gpt-4o-mini",
             messages=[
-                {"role": "user", "content": PROMPT_PREFIX + transcript_text}
+                {"role": "system", "content": PROMPT_PREFIX},
+                {"role": "user", "content": transcript_text}
             ],
-            response_format={ "type": "json_object" }
+            response_format={"type": "json_object"}
         )
 
         result = completion.choices[0].message.content
